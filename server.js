@@ -140,9 +140,13 @@ function ensureAdmin() {
 
 function loadThemes() {
   const html = fs.readFileSync(path.join(publicDir, "index.html"), "utf8");
-  const match = html.match(/const themes = ([\s\S]*?\]\)\);)/);
-  if (!match) throw new Error("Cannot find themes in outputs/index.html");
-  const script = `return (${match[1].replace(/;\s*$/, "")});`;
+  const startToken = "const themes = ";
+  const endToken = "    const crop = ";
+  const start = html.indexOf(startToken);
+  const end = html.indexOf(endToken, start);
+  if (start < 0 || end < 0) throw new Error("Cannot find themes in outputs/index.html");
+  const source = html.slice(start + startToken.length, end).trim().replace(/;\s*$/, "");
+  const script = `return (${source});`;
   return Function(script)();
 }
 
