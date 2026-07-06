@@ -21,7 +21,7 @@
 
       <h2>新增手机白名单</h2>
       <form id="whitelistForm">
-        <label>手机号<input name="phone" inputmode="numeric" required></label>
+        <label>手机号<input name="phone" inputmode="numeric" autocomplete="off" maxlength="11" pattern="1[3-9][0-9]{9}" placeholder="请输入11位手机号" required></label>
         <label>备注<input name="note" placeholder="好友姓名或来源"></label>
         <button type="submit">生成邀请码</button>
       </form>
@@ -37,7 +37,9 @@
 
   <script>
     const form = document.querySelector("#whitelistForm");
+    const phoneInput = form.elements.phone;
     const message = document.querySelector("#message");
+    let whitelistItems = [];
 
     async function api(url, options = {}) {
       const response = await fetch(url, {
@@ -54,15 +56,41 @@
       return { unused: "未使用", used: "已使用", disabled: "已禁用" }[status] || status;
     }
 
+    function inviteMessage(item) {
+      return [
+        "Minecraft English Reader 注册信息",
+        `注册链接：${location.origin}/register`,
+        `手机号：${item.phone}`,
+        `邀请码：${item.inviteCode}`,
+        "首次注册后邀请码会自动失效。"
+      ].join("\n");
+    }
+
+    async function copyText(text) {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+
     async function loadWhitelist() {
       const data = await api("/api/admin/whitelist");
+      whitelistItems = data.items;
       document.querySelector("#whitelist").innerHTML = data.items.map((item) => `
         <div class="row">
           <div>
             <strong>${item.phone}</strong>
             <div class="muted">${item.note || "无备注"} · ${statusText(item.status)} · 邀请码：${item.inviteCode || "已失效"}</div>
           </div>
-          ${item.status === "unused" ? `<button class="danger" data-disable-white="${item.id}">禁用</button>` : ""}
+          ${item.status === "unused" ? `<div class="actions"><button class="secondary" data-copy-white="${item.id}">复制</button><button class="danger" data-disable-white="${item.id}">禁用</button></div>` : ""}
         </div>
       `).join("") || "<p>暂无白名单</p>";
     }
@@ -82,6 +110,12 @@
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      const phone = phoneInput.value.trim();
+      if (!/^1[3-9]\d{9}$/.test(phone)) {
+        message.textContent = "请输入正确的11位手机号";
+        phoneInput.focus();
+        return;
+      }
       message.textContent = "正在生成...";
       try {
         const body = Object.fromEntries(new FormData(form).entries());
@@ -94,10 +128,25 @@
       }
     });
 
+    phoneInput.addEventListener("input", () => {
+      phoneInput.value = phoneInput.value.replace(/\D/g, "").slice(0, 11);
+    });
+
     document.addEventListener("click", async (event) => {
+      const copyButton = event.target.closest("[data-copy-white]");
       const whiteButton = event.target.closest("[data-disable-white]");
       const userButton = event.target.closest("[data-user]");
       try {
+        if (copyButton) {
+          const item = whitelistItems.find((entry) => String(entry.id) === copyButton.dataset.copyWhite);
+          if (!item?.inviteCode) {
+            message.textContent = "邀请码已失效，无法复制";
+            return;
+          }
+          await copyText(inviteMessage(item));
+          message.textContent = `已复制 ${item.phone} 的邀请信息`;
+          return;
+        }
         if (whiteButton) {
           await api(`/api/admin/whitelist/${whiteButton.dataset.disableWhite}`, { method: "PATCH", body: JSON.stringify({ status: "disabled" }) });
           await loadWhitelist();

@@ -147,6 +147,14 @@ button.danger {
   align-items: center;
 }
 
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .muted {
   color: #665;
   font-size: 14px;
