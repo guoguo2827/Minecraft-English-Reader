@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 - Minecraft English Reader</title>
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body>
+  <main class="portal">
+    <section class="portal-card">
+      <h1>Minecraft English Reader</h1>
+      <p>好友小范围英语点读学习</p>
+      <form id="loginForm">
+        <label>用户名<input name="username" autocomplete="username" required></label>
+        <label>密码<input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">登录</button>
+      </form>
+      <p class="portal-link">第一次使用？<a href="/register">用邀请码注册</a></p>
+      <p class="message" id="message"></p>
+      <p class="notice">非官方学习工具，与 Mojang、Microsoft、Minecraft 官方无关联。</p>
+    </section>
+  </main>
+  <script>
+    const form = document.querySelector("#loginForm");
+    const message = document.querySelector("#message");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.textContent = "正在登录...";
+      const body = Object.fromEntries(new FormData(form).entries());
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        message.textContent = data.error || "登录失败";
+        return;
+      }
+      location.href = "/";
+    });
+  </script>
+</body>
+</html>

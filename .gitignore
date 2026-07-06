@@ -1,4 +1,8 @@
 .codex/
 .agents/
+node_modules/
+data/
+backups/
+.env
 .DS_Store
 Thumbs.db

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>我的进度 - Minecraft English Reader</title>
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="panel wide">
+      <div class="top">
+        <div>
+          <h1>我的学习进度</h1>
+          <p id="userLine">正在读取...</p>
+        </div>
+        <div>
+          <a href="/">返回学习</a>
+        </div>
+      </div>
+      <div class="grid" id="stats"></div>
+      <h2>主题进度</h2>
+      <div class="list" id="themes"></div>
+      <p class="notice">非官方学习工具，与 Mojang、Microsoft、Minecraft 官方无关联。</p>
+    </section>
+  </main>
+  <script>
+    async function api(url) {
+      const response = await fetch(url);
+      if (response.status === 401) location.href = "/login";
+      return response.json();
+    }
+
+    async function init() {
+      const me = await api("/api/me");
+      const data = await api("/api/progress");
+      document.querySelector("#userLine").textContent = `${me.user.nickname} · ${me.user.username}`;
+      document.querySelector("#stats").innerHTML = `
+        <div class="stat"><strong>${data.totals.studiedWords}</strong>已学习单词</div>
+        <div class="stat"><strong>${data.totals.masteredWords}</strong>已掌握单词</div>
+        <div class="stat"><strong>${data.totals.reviewCount}</strong>待复习错题</div>
+        <div class="stat"><strong>${data.totals.totalWords}</strong>总单词</div>
+      `;
+      document.querySelector("#themes").innerHTML = data.themes.map((theme) => `
+        <div class="row">
+          <div>
+            <strong>${theme.title}</strong>
+            <div class="muted">${theme.subtitle} · 完成 ${theme.completion}% · 正确率 ${theme.accuracy}% · 错题 ${theme.reviewCount}</div>
+          </div>
+          <div>${theme.masteredWords}/${theme.totalWords}</div>
+        </div>
+      `).join("");
+    }
+    init();
+  </script>
+</body>
+</html>

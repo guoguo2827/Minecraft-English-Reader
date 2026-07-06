@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>管理后台 - Minecraft English Reader</title>
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="panel wide">
+      <div class="top">
+        <div>
+          <h1>管理后台</h1>
+          <p id="adminLine">手机号白名单、邀请码和用户进度</p>
+        </div>
+        <div>
+          <a href="/">返回学习</a>
+        </div>
+      </div>
+
+      <h2>新增手机白名单</h2>
+      <form id="whitelistForm">
+        <label>手机号<input name="phone" inputmode="numeric" required></label>
+        <label>备注<input name="note" placeholder="好友姓名或来源"></label>
+        <button type="submit">生成邀请码</button>
+      </form>
+      <p class="message" id="message"></p>
+
+      <h2>白名单与邀请码</h2>
+      <div class="list" id="whitelist"></div>
+
+      <h2>用户与学习统计</h2>
+      <div class="list" id="users"></div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.querySelector("#whitelistForm");
+    const message = document.querySelector("#message");
+
+    async function api(url, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) }
+      });
+      if (response.status === 401) location.href = "/login";
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "操作失败");
+      return data;
+    }
+
+    function statusText(status) {
+      return { unused: "未使用", used: "已使用", disabled: "已禁用" }[status] || status;
+    }
+
+    async function loadWhitelist() {
+      const data = await api("/api/admin/whitelist");
+      document.querySelector("#whitelist").innerHTML = data.items.map((item) => `
+        <div class="row">
+          <div>
+            <strong>${item.phone}</strong>
+            <div class="muted">${item.note || "无备注"} · ${statusText(item.status)} · 邀请码：${item.inviteCode || "已失效"}</div>
+          </div>
+          ${item.status === "unused" ? `<button class="danger" data-disable-white="${item.id}">禁用</button>` : ""}
+        </div>
+      `).join("") || "<p>暂无白名单</p>";
+    }
+
+    async function loadUsers() {
+      const data = await api("/api/admin/users");
+      document.querySelector("#users").innerHTML = data.items.map((user) => `
+        <div class="row">
+          <div>
+            <strong>${user.nickname} (${user.username})</strong>
+            <div class="muted">${user.phone || "无手机号"} · ${user.role} · ${user.status} · 掌握 ${user.progress.masteredWords}/${user.progress.totalWords} · 错题 ${user.progress.reviewCount}</div>
+          </div>
+          ${user.role !== "admin" ? `<button class="${user.status === "active" ? "danger" : "secondary"}" data-user="${user.id}" data-status="${user.status === "active" ? "disabled" : "active"}">${user.status === "active" ? "禁用" : "启用"}</button>` : ""}
+        </div>
+      `).join("") || "<p>暂无用户</p>";
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.textContent = "正在生成...";
+      try {
+        const body = Object.fromEntries(new FormData(form).entries());
+        const item = await api("/api/admin/whitelist", { method: "POST", body: JSON.stringify(body) });
+        message.textContent = `邀请码：${item.inviteCode}`;
+        form.reset();
+        await loadWhitelist();
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    });
+
+    document.addEventListener("click", async (event) => {
+      const whiteButton = event.target.closest("[data-disable-white]");
+      const userButton = event.target.closest("[data-user]");
+      try {
+        if (whiteButton) {
+          await api(`/api/admin/whitelist/${whiteButton.dataset.disableWhite}`, { method: "PATCH", body: JSON.stringify({ status: "disabled" }) });
+          await loadWhitelist();
+        }
+        if (userButton) {
+          await api(`/api/admin/users/${userButton.dataset.user}`, { method: "PATCH", body: JSON.stringify({ status: userButton.dataset.status }) });
+          await loadUsers();
+        }
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    });
+
+    loadWhitelist();
+    loadUsers();
+  </script>
+</body>
+</html>

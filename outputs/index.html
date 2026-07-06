@@ -92,6 +92,33 @@
       appearance: none;
     }
 
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .top-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 8px 12px;
+      border: 3px solid #f7db75;
+      border-radius: 8px;
+      background: #fff9e8;
+      color: #243a24;
+      font-weight: 900;
+      text-decoration: none;
+    }
+
+    .top-link.button {
+      font: inherit;
+      cursor: pointer;
+    }
+
     main {
       display: grid;
       grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
@@ -165,7 +192,7 @@
     .workspace {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(310px, 360px);
-      grid-template-rows: auto 1fr;
+      grid-template-rows: auto auto 1fr;
       gap: 12px;
       min-height: 0;
     }
@@ -173,7 +200,7 @@
     .hero {
       display: grid;
       grid-column: 2;
-      grid-row: 1;
+      grid-row: 2;
       grid-template-columns: 1fr;
       gap: 12px;
       align-items: stretch;
@@ -271,7 +298,7 @@
     .cards {
       display: grid;
       grid-column: 1;
-      grid-row: 1 / span 2;
+      grid-row: 2 / span 2;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
       min-height: 0;
@@ -330,6 +357,56 @@
       min-width: 0;
     }
 
+    .mode-switch {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      width: min(520px, 100%);
+      justify-self: center;
+      padding: 6px;
+      border: 4px solid #6b4a23;
+      border-radius: 8px;
+      background: #3d2818;
+    }
+
+    .mode-switch button {
+      min-height: 44px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #fff8da;
+      font-weight: 900;
+    }
+
+    body[data-study-mode="learn"] [data-mode-button="learn"],
+    body[data-study-mode="quiz"] [data-mode-button="quiz"] {
+      background: #f5c94d;
+      color: #20330f;
+      box-shadow: inset 0 -4px 0 rgba(0,0,0,.18);
+    }
+
+    body[data-study-mode="learn"] .quiz,
+    body[data-study-mode="quiz"] .cards {
+      filter: blur(5px) grayscale(.25);
+      opacity: .48;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .copyright-note {
+      grid-column: 1 / -1;
+      margin: 0;
+      padding: 10px 12px;
+      border: 3px solid #b79556;
+      border-radius: 8px;
+      background: rgba(255, 249, 232, .92);
+      color: #5d4927;
+      font-size: 13px;
+      font-weight: 800;
+      text-align: center;
+    }
+
     .word-meta b {
       font-size: clamp(20px, 1.85vw, 29px);
       line-height: 1.05;
@@ -352,7 +429,7 @@
       display: grid;
       align-self: stretch;
       grid-column: 2;
-      grid-row: 2;
+      grid-row: 3;
       grid-template-rows: auto auto 1fr;
       gap: 10px;
       padding: 12px;
@@ -464,13 +541,23 @@
         <h1>Minecraft English Reader</h1>
         <p>我的世界英语点读学习 · 方块切片修复 v7</p>
       </div>
-      <button class="status-pill" id="voiceStatus" type="button">开启语音</button>
+      <div class="top-actions">
+        <a class="top-link" href="/progress">我的进度</a>
+        <a class="top-link" href="/admin" id="adminLink" hidden>管理后台</a>
+        <button class="top-link button" id="logoutBtn" type="button">退出</button>
+        <button class="status-pill" id="voiceStatus" type="button">开启语音</button>
+      </div>
     </header>
 
     <main>
       <nav class="sidebar" id="themeTabs" aria-label="主题"></nav>
 
       <section class="workspace">
+        <div class="mode-switch" aria-label="学习模式切换">
+          <button type="button" data-mode-button="learn">学习模式</button>
+          <button type="button" data-mode-button="quiz">答题模式</button>
+        </div>
+
         <section class="hero">
           <aside class="learning-panel">
             <div class="theme-heading">
@@ -500,6 +587,7 @@
           <div class="answers" id="answers"></div>
           <div class="feedback" id="feedback"></div>
         </section>
+        <p class="copyright-note">非官方学习工具，与 Mojang、Microsoft、Minecraft 官方无关联，仅供私人学习交流使用。</p>
       </section>
     </main>
   </div>
@@ -767,8 +855,11 @@
     let voiceUnlocked = false;
     let fallbackAudio = null;
     let nextFallbackAudio = null;
+    let studyMode = "learn";
 
     const els = {
+      adminLink: document.querySelector("#adminLink"),
+      logoutBtn: document.querySelector("#logoutBtn"),
       themeTabs: document.querySelector("#themeTabs"),
       poster: document.querySelector("#themePoster"),
       themeTitle: document.querySelector("#themeTitle"),
@@ -782,8 +873,39 @@
       speakQuizBtn: document.querySelector("#speakQuizBtn"),
       answers: document.querySelector("#answers"),
       feedback: document.querySelector("#feedback"),
-      voiceStatus: document.querySelector("#voiceStatus")
+      voiceStatus: document.querySelector("#voiceStatus"),
+      modeButtons: document.querySelectorAll("[data-mode-button]")
     };
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) }
+      });
+      if (response.status === 401) {
+        location.href = "/login";
+        return null;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || "操作失败");
+      }
+      return data;
+    }
+
+    async function initUser() {
+      try {
+        const data = await api("/api/me");
+        if (data?.user?.role === "admin") {
+          els.adminLink.hidden = false;
+        }
+      } catch {}
+    }
+
+    function setStudyMode(mode) {
+      studyMode = mode === "quiz" ? "quiz" : "learn";
+      document.body.dataset.studyMode = studyMode;
+    }
 
     function loadImage(src) {
       if (imageCache.has(src)) return imageCache.get(src);
@@ -956,6 +1078,10 @@
         card.classList.add("speaking");
         setTimeout(() => card.classList.remove("speaking"), 520);
       }
+      api("/api/progress/word", {
+        method: "POST",
+        body: JSON.stringify({ themeId: themes[currentThemeIndex].id, word: item.word })
+      }).catch(() => {});
       speak(item.word);
     }
 
@@ -978,24 +1104,36 @@
       return array.map((value) => ({ value, sort: Math.random() })).sort((a, b) => a.sort - b.sort).map(({ value }) => value);
     }
 
-    function newQuiz() {
+    async function newQuiz() {
       const theme = themes[currentThemeIndex];
-      quizItem = theme.items[Math.floor(Math.random() * theme.items.length)];
-      const wrongPool = shuffle(theme.items.filter((item) => item.cn !== quizItem.cn)).slice(0, 3);
-      const options = shuffle([quizItem, ...wrongPool]);
+      const data = await api("/api/quiz/next", {
+        method: "POST",
+        body: JSON.stringify({ themeId: theme.id })
+      }).catch(() => null);
+      if (!data) return;
+      quizItem = theme.items.find((item) => item.word === data.word) || theme.items[0];
+      const options = data.options || shuffle([quizItem, ...shuffle(theme.items.filter((item) => item.cn !== quizItem.cn)).slice(0, 3)]).map((item) => item.cn);
       els.quizWord.textContent = quizItem.word;
       els.feedback.textContent = "";
-      els.answers.innerHTML = options.map((item) => `
-        <button class="answer" type="button" data-cn="${item.cn}">${item.cn}</button>
+      els.answers.innerHTML = options.map((cn) => `
+        <button class="answer" type="button" data-cn="${cn}">${cn}</button>
       `).join("");
       els.answers.querySelectorAll(".answer").forEach((button) => {
-        button.addEventListener("click", () => {
-          const correct = button.dataset.cn === quizItem.cn;
+        button.addEventListener("click", async () => {
+          const result = await api("/api/quiz/answer", {
+            method: "POST",
+            body: JSON.stringify({ themeId: theme.id, word: quizItem.word, selectedCn: button.dataset.cn })
+          }).catch((error) => ({ error: error.message }));
+          if (result?.error) {
+            els.feedback.textContent = result.error;
+            return;
+          }
+          const correct = Boolean(result.correct);
           els.answers.querySelectorAll(".answer").forEach((node) => {
-            if (node.dataset.cn === quizItem.cn) node.classList.add("correct");
+            if (node.dataset.cn === result.correctCn) node.classList.add("correct");
           });
           if (!correct) button.classList.add("wrong");
-          els.feedback.textContent = correct ? "答对了！" : `正确答案：${quizItem.cn}`;
+          els.feedback.textContent = correct ? "答对了！" : `正确答案：${result.correctCn}`;
           speak(quizItem.word);
         }, { once: true });
       });
@@ -1016,6 +1154,7 @@
       renderTabs();
       renderCards();
       newQuiz();
+      setStudyMode("learn");
     }
 
     els.themeTabs.addEventListener("click", (event) => {
@@ -1027,9 +1166,18 @@
     els.quizBtn.addEventListener("click", newQuiz);
     els.speakQuizBtn.addEventListener("click", () => quizItem && speak(quizItem.word));
     els.voiceStatus.addEventListener("click", unlockVoice);
+    els.logoutBtn.addEventListener("click", async () => {
+      await api("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => null);
+      location.href = "/login";
+    });
+    els.modeButtons.forEach((button) => {
+      button.addEventListener("click", () => setStudyMode(button.dataset.modeButton));
+    });
     window.speechSynthesis?.addEventListener?.("voiceschanged", pickVoice);
     window.addEventListener("resize", () => renderCards());
 
+    initUser();
+    setStudyMode("learn");
     pickVoice();
     setTheme(0);
   </script>
