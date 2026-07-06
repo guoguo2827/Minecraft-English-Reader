@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Minecraft English Reader</title>
+  <style>
+    :root {
+      --bg: #dff4cf;
+      --ink: #182317;
+      --leaf: #2f7d32;
+      --leaf-dark: #1f5f2a;
+      --wood: #8a5528;
+      --gold: #f5c94d;
+      --paper: #fff9e8;
+      --line: #7b5b2f;
+      --blue: #2d8ac8;
+      --red: #c64238;
+      font-family: "Trebuchet MS", "Microsoft YaHei", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.65), rgba(255,255,255,0) 230px),
+        repeating-linear-gradient(45deg, rgba(80, 143, 66, .14) 0 14px, rgba(80, 143, 66, .05) 14px 28px),
+        var(--bg);
+    }
+
+    button {
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 10px 18px;
+      background: linear-gradient(180deg, #3d2818, #7b4b24);
+      border-bottom: 5px solid #2c1a0d;
+      color: #fff8da;
+      box-shadow: 0 8px 20px rgba(28, 21, 10, .25);
+    }
+
+    .brand {
+      min-width: 0;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(22px, 2.6vw, 34px);
+      letter-spacing: 0;
+      text-shadow: 0 3px 0 #1b1109;
+    }
+
+    .brand p {
+      margin: 2px 0 0;
+      font-weight: 800;
+      color: #c9f38b;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 160px;
+      min-height: 42px;
+      padding: 8px 14px;
+      border: 3px solid #f7db75;
+      border-radius: 8px;
+      background: #243a24;
+      color: #fff;
+      font-weight: 900;
+      box-shadow: inset 0 -4px 0 rgba(0,0,0,.25);
+    }
+
+    button.status-pill {
+      appearance: none;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
+      gap: 12px;
+      width: min(1500px, 100%);
+      margin: 0 auto;
+      padding: 12px;
+      min-height: calc(100vh - 86px);
+    }
+
+    .sidebar {
+      align-self: start;
+      position: sticky;
+      top: 82px;
+      display: grid;
+      gap: 10px;
+      max-height: calc(100vh - 104px);
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .theme-tab {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 10px;
+      align-items: center;
+      width: 100%;
+      border: 3px solid #6d4b26;
+      border-radius: 8px;
+      padding: 8px;
+      color: #2a1d11;
+      background: #fff5cf;
+      text-align: left;
+      font-weight: 900;
+      box-shadow: inset 0 -4px 0 rgba(92, 58, 18, .16);
+    }
+
+    .theme-tab.active {
+      border-color: #193f1e;
+      background: linear-gradient(180deg, #70c45c, #3b9b40);
+      color: white;
+      text-shadow: 0 2px 0 rgba(0,0,0,.35);
+    }
+
+    .tab-num {
+      display: grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: #2d6f31;
+      color: #fff;
+      border: 2px solid rgba(255,255,255,.7);
+      font-size: 20px;
+    }
+
+    .tab-title {
+      min-width: 0;
+      line-height: 1.15;
+    }
+
+    .tab-title small {
+      display: block;
+      margin-top: 3px;
+      color: inherit;
+      opacity: .75;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(310px, 360px);
+      grid-template-rows: auto 1fr;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .hero {
+      display: grid;
+      grid-column: 2;
+      grid-row: 1;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .poster-wrap {
+      overflow: hidden;
+      border: 5px solid #5c3a1d;
+      border-radius: 8px;
+      background: #2e1d11;
+      box-shadow: 0 12px 24px rgba(47, 35, 16, .24);
+    }
+
+    .poster-wrap img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      aspect-ratio: 3 / 2;
+    }
+
+    .learning-panel {
+      display: grid;
+      grid-template-columns: 1fr;
+      align-items: stretch;
+      gap: 10px;
+      padding: 12px;
+      border: 4px solid #704c25;
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: inset 0 -6px 0 rgba(123, 91, 47, .16);
+    }
+
+    .theme-heading h2 {
+      margin: 0;
+      font-size: clamp(22px, 2.5vw, 34px);
+      color: var(--leaf-dark);
+      letter-spacing: 0;
+    }
+
+    .theme-heading p {
+      margin: 4px 0 0;
+      font-weight: 900;
+      color: #72512a;
+    }
+
+    .now-word {
+      display: grid;
+      place-items: center;
+      min-height: 92px;
+      padding: 10px;
+      border: 4px solid #2d6f31;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #f8ffe8, #d7f7bc);
+      text-align: center;
+    }
+
+    .now-word strong {
+      display: block;
+      font-size: clamp(30px, 4vw, 52px);
+      line-height: 1;
+      color: #173b1d;
+      overflow-wrap: anywhere;
+    }
+
+    .now-word span {
+      display: block;
+      margin-top: 6px;
+      font-size: 20px;
+      font-weight: 900;
+      color: #9a2d22;
+    }
+
+    .panel-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .big-action {
+      min-height: 44px;
+      border: 0;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #f8d96b, #d59a2a);
+      color: #2b1a08;
+      font-weight: 1000;
+      box-shadow: inset 0 -5px 0 rgba(70, 45, 8, .22);
+    }
+
+    .big-action.secondary {
+      background: linear-gradient(180deg, #78d3ff, #2d8ac8);
+      color: #082136;
+    }
+
+    .cards {
+      display: grid;
+      grid-column: 1;
+      grid-row: 1 / span 2;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .word-card {
+      min-width: 0;
+      min-height: 220px;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      overflow: hidden;
+      border: 4px solid #6a4a28;
+      border-radius: 8px;
+      background: #fffaf0;
+      box-shadow: inset 0 -6px 0 rgba(110, 78, 37, .16), 0 6px 12px rgba(45, 35, 18, .12);
+      transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+    }
+
+    .word-card:hover,
+    .word-card:focus-visible {
+      transform: translateY(-2px);
+      border-color: var(--leaf);
+      outline: none;
+      box-shadow: inset 0 -6px 0 rgba(110, 78, 37, .16), 0 10px 18px rgba(45, 35, 18, .2);
+    }
+
+    .word-card.speaking {
+      border-color: #f0b719;
+      animation: pop .34s ease;
+    }
+
+    @keyframes pop {
+      50% { transform: scale(1.025); }
+    }
+
+    .thumb {
+      min-height: 128px;
+      background: #e9f4dc;
+      display: grid;
+      place-items: center;
+      border-bottom: 3px solid #d2c09b;
+    }
+
+    .thumb canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .word-meta {
+      display: grid;
+      gap: 4px;
+      padding: 12px;
+      text-align: center;
+      min-width: 0;
+    }
+
+    .word-meta b {
+      font-size: clamp(20px, 1.85vw, 29px);
+      line-height: 1.05;
+      overflow-wrap: anywhere;
+      word-break: normal;
+      max-width: 100%;
+    }
+
+    .word-meta b.long-word {
+      font-size: clamp(15px, 1.35vw, 21px);
+    }
+
+    .word-meta span {
+      color: #207026;
+      font-size: 22px;
+      font-weight: 900;
+    }
+
+    .quiz {
+      display: grid;
+      align-self: stretch;
+      grid-column: 2;
+      grid-row: 2;
+      grid-template-rows: auto auto 1fr;
+      gap: 10px;
+      padding: 12px;
+      border: 4px solid #355d2e;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #f7ffe6, #d8f0c4);
+    }
+
+    .quiz-top {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .quiz-word {
+      margin: 0;
+      font-size: clamp(30px, 3.5vw, 50px);
+      color: #143819;
+      letter-spacing: 0;
+    }
+
+    .answers {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .answer {
+      min-height: 52px;
+      padding: 10px;
+      border: 3px solid #5c7a2a;
+      border-radius: 8px;
+      background: #fffdf1;
+      font-size: 20px;
+      font-weight: 900;
+      color: #1e391d;
+    }
+
+    .answer.correct {
+      background: #b8ef95;
+      border-color: #25742a;
+    }
+
+    .answer.wrong {
+      background: #ffd0c8;
+      border-color: #b64031;
+    }
+
+    .feedback {
+      min-height: 30px;
+      font-size: 20px;
+      font-weight: 900;
+      color: #6a3e13;
+    }
+
+    @media (max-width: 1100px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .quiz {
+        grid-column: auto;
+        grid-row: auto;
+      }
+
+      .learning-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .answers {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 820px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .cards,
+      .answers {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 560px) {
+      main {
+        padding: 10px;
+      }
+
+      .cards,
+      .answers,
+      .panel-actions {
+        grid-template-columns: 1fr;
+      }
+
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Minecraft English Reader</h1>
+        <p>我的世界英语点读学习 · 方块切片修复 v7</p>
+      </div>
+      <button class="status-pill" id="voiceStatus" type="button">开启语音</button>
+    </header>
+
+    <main>
+      <nav class="sidebar" id="themeTabs" aria-label="主题"></nav>
+
+      <section class="workspace">
+        <section class="hero">
+          <aside class="learning-panel">
+            <div class="theme-heading">
+              <h2 id="themeTitle"></h2>
+              <p id="themeSubtitle"></p>
+            </div>
+            <div class="now-word">
+              <div>
+                <strong id="currentWord">block</strong>
+                <span id="currentCn">方块</span>
+              </div>
+            </div>
+            <div class="panel-actions">
+              <button class="big-action" id="repeatBtn" type="button">再读一次</button>
+              <button class="big-action secondary" id="quizBtn" type="button">下一题</button>
+            </div>
+          </aside>
+        </section>
+
+        <section class="cards" id="cards"></section>
+
+        <section class="quiz" id="quiz">
+          <div class="quiz-top">
+            <h2 class="quiz-word" id="quizWord"></h2>
+            <button class="big-action secondary" id="speakQuizBtn" type="button">读题</button>
+          </div>
+          <div class="answers" id="answers"></div>
+          <div class="feedback" id="feedback"></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const themes = [
+      {
+        id: "wood",
+        title: "各种木头合集",
+        subtitle: "Wood Blocks",
+        image: "minecraft-english-01.webp",
+        items: [
+          ["oak", "橡木"], ["spruce", "云杉木"], ["birch", "白桦木"], ["jungle", "丛林木"],
+          ["acacia", "金合欢木"], ["dark oak", "深色橡木"], ["mangrove", "红树木"], ["cherry", "樱花木"],
+          ["bamboo", "竹子"], ["crimson stem", "绯红木"], ["warped stem", "诡异木"], ["mushroom stem", "蘑菇柄"],
+          ["pale oak", "苍白橡木"], ["stripped oak", "去皮橡木"], ["stripped spruce", "去皮云杉木"], ["stripped birch", "去皮白桦木"]
+        ]
+      },
+      {
+        id: "rare",
+        title: "最稀有资源合集",
+        subtitle: "Rare Resources",
+        image: "minecraft-english-02.webp",
+        items: [
+          ["diamond", "钻石"], ["ancient debris", "远古残骸"], ["emerald", "绿宝石"], ["nether quartz", "下界石英"],
+          ["nether star", "下界之星"], ["dragon egg", "龙蛋"], ["echo shard", "回声碎片"], ["disc fragment", "唱片碎片"],
+          ["amethyst shard", "紫水晶碎片"], ["glow berries", "发光浆果"], ["sculk catalyst", "幽匿催发体"], ["sculk sensor", "幽匿感测体"],
+          ["enchanted book", "附魔书"], ["golden apple", "金苹果"], ["totem of undying", "不死图腾"], ["heart of the sea", "海洋之心"]
+        ]
+      },
+      {
+        id: "explosives",
+        title: "爆炸元素与爆炸生物合集",
+        subtitle: "Explosives",
+        image: "minecraft-english-03.webp",
+        items: [
+          ["creeper", "苦力怕"], ["charged creeper", "高压苦力怕"], ["ghast", "恶魂"], ["wither", "凋零"],
+          ["TNT", "TNT炸药"], ["respawn anchor", "重生锚"], ["bed", "床"], ["end crystal", "末地水晶"],
+          ["fire", "火焰"], ["lava", "岩浆"], ["fire charge", "火焰弹"], ["blaze fireball", "烈焰火球"],
+          ["dispenser", "发射器"], ["redstone", "红石"], ["TNT minecart", "TNT矿车"], ["explosive trap", "爆炸陷阱"]
+        ],
+        cropRects: [
+          { x: 22, y: 165, w: 360, h: 232 },
+          { x: 390, y: 165, w: 372, h: 232 },
+          { x: 770, y: 165, w: 368, h: 232 },
+          { x: 1147, y: 165, w: 366, h: 232 },
+          { x: 22, y: 425, w: 360, h: 210 },
+          { x: 390, y: 425, w: 372, h: 210 },
+          { x: 770, y: 425, w: 368, h: 210 },
+          { x: 1147, y: 425, w: 366, h: 210 },
+          { x: 22, y: 668, w: 182, h: 222 },
+          { x: 207, y: 668, w: 180, h: 222 },
+          { x: 392, y: 668, w: 180, h: 222 },
+          { x: 577, y: 668, w: 182, h: 222 },
+          { x: 775, y: 668, w: 174, h: 222 },
+          { x: 953, y: 668, w: 178, h: 222 },
+          { x: 1135, y: 668, w: 180, h: 222 },
+          { x: 1320, y: 668, w: 192, h: 222 }
+        ]
+      },
+      {
+        id: "redstone",
+        title: "红石与机械词汇表",
+        subtitle: "Redstone & Machines",
+        image: "minecraft-english-04.webp",
+        items: [
+          ["redstone", "红石"], ["redstone torch", "红石火把"], ["repeater", "红石中继器"], ["comparator", "红石比较器"],
+          ["piston", "活塞"], ["sticky piston", "粘性活塞"], ["dispenser", "发射器"], ["dropper", "投掷器"],
+          ["hopper", "漏斗"], ["chest", "箱子"], ["note block", "音符盒"], ["jukebox", "唱片机"],
+          ["detector rail", "探测铁轨"], ["activator rail", "激活铁轨"], ["daylight sensor", "阳光传感器"], ["bell", "钟"]
+        ]
+      },
+      {
+        id: "nether-mobs",
+        title: "下界生物合集",
+        subtitle: "Nether Mobs",
+        image: "minecraft-english-05.webp",
+        items: [
+          ["ghast", "恶魂"], ["magma cube", "岩浆怪"], ["blaze", "烈焰人"], ["piglin", "猪灵"],
+          ["zombified piglin", "僵尸猪灵"], ["hoglin", "疣足兽"], ["strider", "炽足兽骑乘体"], ["wither skeleton", "凋灵骷髅"],
+          ["magma block", "岩浆方块"], ["nether slime", "下界史莱姆"], ["endermite", "蠹虫"], ["wither", "凋灵"],
+          ["soul fire", "灵魂火"], ["soul sand", "灵魂沙"], ["nether portal", "下界传送门"], ["ancient debris", "远古残骸"]
+        ]
+      },
+      {
+        id: "terrain",
+        title: "环境与地形词汇表",
+        subtitle: "Environment & Terrain",
+        image: "minecraft-english-06.webp",
+        items: [
+          ["biome", "生物群系"], ["plains", "平原"], ["desert", "沙漠"], ["forest", "森林"],
+          ["jungle", "丛林"], ["savanna", "热带草原"], ["taiga", "针叶林"], ["mountain", "山地"],
+          ["cave", "洞穴"], ["ocean", "海洋"], ["river", "河流"], ["island", "岛屿"],
+          ["nether", "下界"], ["the end", "末地"], ["deep dark", "深暗之域"], ["stronghold", "要塞"]
+        ]
+      },
+      {
+        id: "advanced-hostile",
+        title: "高级敌对生物词汇",
+        subtitle: "Advanced Hostile Mobs",
+        image: "minecraft-english-07.webp",
+        items: [
+          ["ender dragon", "末影龙"], ["wither", "凋灵"], ["elder guardian", "远古守卫者"], ["dragon egg", "龙蛋"],
+          ["wither skeleton", "凋灵骷髅"], ["enderman", "末影人"], ["shulker", "潜影贝"], ["ravager", "劫掠兽"],
+          ["vindicator", "卫道士"], ["evoker", "唤魔者"], ["vex", "恼鬼"], ["ghast", "恶魂"],
+          ["blaze", "烈焰人"], ["piglin brute", "猪灵蛮兵"], ["endermite", "末影螨"], ["guardian", "守卫者"]
+        ]
+      },
+      {
+        id: "strong-blocks",
+        title: "最强方块排行榜",
+        subtitle: "Strongest Blocks",
+        image: "minecraft-english-08.webp",
+        items: [
+          ["bedrock", "基岩"], ["barrier", "屏障方块"], ["end portal frame", "末地传送门框架"], ["obsidian", "黑曜石"],
+          ["crying obsidian", "哭泣的黑曜石"], ["respawn anchor", "重生锚"], ["ancient debris", "远古残骸"], ["netherite block", "下界合金块"],
+          ["basalt", "玄武岩"], ["deepslate", "深板岩"], ["reinforced deepslate", "强化深板岩"], ["iron block", "铁块"],
+          ["stone bricks", "石砖"], ["cracked stone bricks", "裂纹石砖"], ["mossy stone bricks", "苔石砖"], ["polished blackstone bricks", "抛光黑石砖"]
+        ],
+        cropRects: [
+          { x: 35, y: 155, w: 348, h: 203 },
+          { x: 397, y: 155, w: 352, h: 203 },
+          { x: 760, y: 155, w: 358, h: 203 },
+          { x: 1130, y: 155, w: 372, h: 203 },
+          { x: 35, y: 365, w: 348, h: 197 },
+          { x: 397, y: 365, w: 352, h: 197 },
+          { x: 760, y: 365, w: 358, h: 197 },
+          { x: 1130, y: 365, w: 372, h: 197 },
+          { x: 35, y: 568, w: 348, h: 190 },
+          { x: 397, y: 568, w: 352, h: 190 },
+          { x: 760, y: 568, w: 358, h: 190 },
+          { x: 1130, y: 568, w: 372, h: 190 },
+          { x: 35, y: 765, w: 348, h: 160 },
+          { x: 397, y: 765, w: 352, h: 160 },
+          { x: 760, y: 765, w: 358, h: 160 },
+          { x: 1130, y: 765, w: 372, h: 160 }
+        ]
+      },
+      {
+        id: "neutral-environment",
+        title: "环境与中立生物词汇",
+        subtitle: "Environment & Neutral Mobs",
+        image: "minecraft-english-09.webp",
+        items: [
+          ["axolotl", "美西螈"], ["bat", "蝙蝠"], ["dolphin", "海豚"], ["turtle", "海龟"],
+          ["bee", "蜜蜂"], ["panda", "熊猫"], ["polar bear", "北极熊"], ["llama", "羊驼"],
+          ["trader llama", "行商羊驼"], ["iron golem", "铁傀儡"], ["wandering trader", "流浪商人"], ["boat", "船"],
+          ["minecart", "矿车"], ["chest", "箱子"], ["furnace", "熔炉"], ["crafting table", "工作台"]
+        ]
+      },
+      {
+        id: "friendly",
+        title: "友好生物词汇",
+        subtitle: "Passive & Neutral Mobs",
+        image: "minecraft-english-10.webp",
+        items: [
+          ["wolf", "狼"], ["ocelot", "豹猫"], ["cat", "猫"], ["dog", "狗"],
+          ["fox", "狐狸"], ["panda", "熊猫"], ["llama", "羊驼"], ["horse", "马"],
+          ["donkey", "驴"], ["mule", "骡"], ["pig", "猪"], ["cow", "牛"],
+          ["sheep", "羊"], ["mooshroom", "蘑菇牛"], ["turtle", "海龟"], ["parrot", "鹦鹉"]
+        ]
+      },
+      {
+        id: "hostile",
+        title: "敌对生物词汇",
+        subtitle: "Hostile Mobs",
+        image: "minecraft-english-11.webp",
+        items: [
+          ["creeper", "苦力怕"], ["zombie", "僵尸"], ["skeleton", "骷髅"], ["spider", "蜘蛛"],
+          ["enderman", "末影人"], ["spider jockey", "蜘蛛骑士"], ["slime", "史莱姆"], ["magma cube", "岩浆怪"],
+          ["zombie villager", "僵尸村民"], ["drowned", "溺尸"], ["husk", "尸壳"], ["phantom", "幻翼"],
+          ["witch", "女巫"], ["blaze", "烈焰人"], ["ghast", "恶魂"], ["silverfish", "蠹虫"]
+        ]
+      },
+      {
+        id: "food",
+        title: "食物与杂项",
+        subtitle: "Food & Miscellaneous",
+        image: "minecraft-english-12.webp",
+        items: [
+          ["bread", "面包"], ["apple", "苹果"], ["cooked beef", "熟牛肉"], ["cooked chicken", "熟鸡肉"],
+          ["carrot", "胡萝卜"], ["potato", "土豆"], ["golden carrot", "金胡萝卜"], ["pumpkin pie", "南瓜派"],
+          ["cookie", "曲奇"], ["cake", "蛋糕"], ["melon slice", "西瓜片"], ["beetroot", "甜菜根"],
+          ["raw fish", "生鱼"], ["cooked fish", "熟鱼"], ["milk", "牛奶"], ["potion", "药水"]
+        ]
+      },
+      {
+        id: "ores",
+        title: "矿石与资源",
+        subtitle: "Ores & Resources",
+        image: "minecraft-english-13.webp",
+        items: [
+          ["coal", "煤炭"], ["iron ore", "铁矿石"], ["iron ingot", "铁锭"], ["gold ore", "金矿石"],
+          ["gold ingot", "金锭"], ["diamond ore", "钻石矿石"], ["diamond", "钻石"], ["emerald ore", "绿宝石矿石"],
+          ["emerald", "绿宝石"], ["redstone ore", "红石矿石"], ["redstone", "红石粉"], ["lapis lazuli ore", "青金石矿石"],
+          ["lapis lazuli", "青金石"], ["nether quartz ore", "下界石英矿石"], ["nether quartz", "下界石英"], ["glowstone dust", "萤石粉"]
+        ]
+      },
+      {
+        id: "verbs",
+        title: "基础动作动词",
+        subtitle: "Basic Action Verbs",
+        image: "minecraft-english-14.webp",
+        items: [
+          ["mine", "挖掘"], ["chop", "砍伐"], ["fish", "钓鱼"], ["gather", "收集"],
+          ["craft", "合成"], ["build", "建造"], ["plant", "种植"], ["eat", "进食"],
+          ["attack", "攻击"], ["defend", "防御"], ["jump", "跳跃"], ["swim", "游泳"],
+          ["open", "打开"], ["close", "关闭"], ["ride", "骑乘"], ["sleep", "睡觉"]
+        ]
+      },
+      {
+        id: "concepts",
+        title: "基础通用概念",
+        subtitle: "Basic Concepts",
+        image: "minecraft-english-15.webp",
+        items: [
+          ["block", "方块"], ["item", "物品"], ["entity", "实体"], ["crafting", "合成"],
+          ["chest", "箱子"], ["furnace", "熔炉"], ["world", "世界"], ["spawn", "生成"],
+          ["player", "玩家"], ["biome", "生物群系"], ["health", "生命值"], ["experience", "经验值"],
+          ["inventory", "物品栏"], ["dimension", "维度"], ["gamemode", "游戏模式"], ["seed", "种子"]
+        ]
+      },
+      {
+        id: "tools",
+        title: "基础工具词汇",
+        subtitle: "Basic Tools",
+        image: "minecraft-english-16.webp",
+        items: [
+          ["wooden pickaxe", "木镐"], ["stone pickaxe", "石镐"], ["iron pickaxe", "铁镐"], ["diamond pickaxe", "钻石镐"],
+          ["wooden axe", "木斧"], ["stone axe", "石斧"], ["iron axe", "铁斧"], ["diamond axe", "钻石斧"],
+          ["wooden shovel", "木铲"], ["stone shovel", "石铲"], ["iron shovel", "铁铲"], ["diamond shovel", "钻石铲"],
+          ["wooden hoe", "木锄"], ["stone hoe", "石锄"], ["iron hoe", "铁锄"], ["diamond hoe", "钻石锄"]
+        ]
+      },
+      {
+        id: "animals",
+        title: "动物与生物词汇",
+        subtitle: "Animals & Mobs",
+        image: "minecraft-english-17.webp",
+        items: [
+          ["pig", "猪"], ["cow", "牛"], ["sheep", "羊"], ["chicken", "鸡"],
+          ["wolf", "狼"], ["cat", "猫"], ["horse", "马"], ["donkey", "驴"],
+          ["rabbit", "兔子"], ["fox", "狐狸"], ["panda", "熊猫"], ["polar bear", "北极熊"],
+          ["turtle", "海龟"], ["parrot", "鹦鹉"], ["bee", "蜜蜂"], ["squid", "鱿鱼"]
+        ]
+      }
+    ].reverse().map((theme) => ({
+      ...theme,
+      items: theme.items.map(([word, cn], index) => ({
+        word,
+        cn,
+        cropRow: Math.floor(index / 4),
+        cropCol: index % 4,
+        cropRect: theme.cropRects?.[index] || null
+      }))
+    }));
+
+    const crop = { x: 30, y: 165, w: 1476, h: 715 };
+    const imageCache = new Map();
+    let currentThemeIndex = 0;
+    let currentItem = themes[0].items[0];
+    let quizItem = null;
+    let selectedVoice = null;
+    let activeUtterance = null;
+    let voiceUnlocked = false;
+    let fallbackAudio = null;
+    let nextFallbackAudio = null;
+
+    const els = {
+      themeTabs: document.querySelector("#themeTabs"),
+      poster: document.querySelector("#themePoster"),
+      themeTitle: document.querySelector("#themeTitle"),
+      themeSubtitle: document.querySelector("#themeSubtitle"),
+      cards: document.querySelector("#cards"),
+      currentWord: document.querySelector("#currentWord"),
+      currentCn: document.querySelector("#currentCn"),
+      repeatBtn: document.querySelector("#repeatBtn"),
+      quizBtn: document.querySelector("#quizBtn"),
+      quizWord: document.querySelector("#quizWord"),
+      speakQuizBtn: document.querySelector("#speakQuizBtn"),
+      answers: document.querySelector("#answers"),
+      feedback: document.querySelector("#feedback"),
+      voiceStatus: document.querySelector("#voiceStatus")
+    };
+
+    function loadImage(src) {
+      if (imageCache.has(src)) return imageCache.get(src);
+      const promise = new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.src = src;
+      });
+      imageCache.set(src, promise);
+      return promise;
+    }
+
+    function pickVoice() {
+      if (!("speechSynthesis" in window)) {
+        els.voiceStatus.textContent = "无语音支持";
+        return;
+      }
+      const voices = speechSynthesis.getVoices();
+      selectedVoice =
+        voices.find((voice) => voice.lang === "en-US") ||
+        voices.find((voice) => voice.lang && voice.lang.toLowerCase().startsWith("en-us")) ||
+        voices.find((voice) => voice.lang && voice.lang.toLowerCase().startsWith("en")) ||
+        null;
+      els.voiceStatus.textContent = voiceUnlocked ? "语音已开启" : "开启语音";
+    }
+
+    function playFallbackAudio(text) {
+      if (!fallbackAudio) {
+        fallbackAudio = new Audio();
+        fallbackAudio.preload = "auto";
+      }
+      const words = text.trim().split(/\s+/).filter(Boolean);
+      fallbackAudio.pause();
+      fallbackAudio.currentTime = 0;
+      fallbackAudio.src = `https://dict.youdao.com/dictvoice?type=2&audio=${encodeURIComponent(text).replace(/%20/g, "+")}`;
+      els.voiceStatus.textContent = "在线语音";
+      return fallbackAudio.play()
+        .then(() => {
+          voiceUnlocked = true;
+          els.voiceStatus.textContent = "语音已开启";
+        })
+        .catch(() => {
+          if (words.length > 1) {
+            playFallbackSequence(words);
+            return;
+          }
+          els.voiceStatus.textContent = "请再点一次";
+        });
+    }
+
+    function playFallbackSequence(words) {
+      let index = 0;
+      const makeUrl = (word) => `https://dict.youdao.com/dictvoice?type=2&audio=${encodeURIComponent(word)}`;
+      if (!nextFallbackAudio) {
+        nextFallbackAudio = new Audio();
+        nextFallbackAudio.preload = "auto";
+      }
+      const playNext = () => {
+        if (index >= words.length) {
+          voiceUnlocked = true;
+          els.voiceStatus.textContent = "语音已开启";
+          return;
+        }
+        if (index + 1 < words.length) {
+          nextFallbackAudio.src = makeUrl(words[index + 1]);
+          nextFallbackAudio.load();
+        }
+        fallbackAudio.pause();
+        fallbackAudio.currentTime = 0;
+        fallbackAudio.src = makeUrl(words[index]);
+        index += 1;
+        els.voiceStatus.textContent = "在线语音";
+        fallbackAudio.onended = () => setTimeout(playNext, 20);
+        fallbackAudio.onerror = () => {
+          els.voiceStatus.textContent = "请再点一次";
+          fallbackAudio.onended = null;
+          fallbackAudio.onerror = null;
+        };
+        fallbackAudio.play().catch(() => {
+          els.voiceStatus.textContent = "请再点一次";
+        });
+      };
+      playNext();
+    }
+
+    function speak(text, options = {}) {
+      if (options.onlineOnly) {
+        playFallbackAudio(text);
+        return;
+      }
+      if (!("speechSynthesis" in window)) {
+        playFallbackAudio(text);
+        return;
+      }
+      pickVoice();
+      speechSynthesis.resume();
+      if (!options.noCancel) {
+        speechSynthesis.cancel();
+      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = selectedVoice?.lang || "en-US";
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+      }
+      utterance.rate = 0.82;
+      utterance.pitch = 1.05;
+      utterance.volume = options.quiet ? 0.01 : 1;
+      utterance.onstart = () => {
+        voiceUnlocked = true;
+        els.voiceStatus.textContent = "语音已开启";
+      };
+      utterance.onend = () => {
+        activeUtterance = null;
+      };
+      utterance.onerror = (event) => {
+        activeUtterance = null;
+        if (event.error === "interrupted" || event.error === "canceled") {
+          els.voiceStatus.textContent = voiceUnlocked ? "语音已开启" : "开启语音";
+          return;
+        }
+        playFallbackAudio(text);
+      };
+      activeUtterance = utterance;
+      speechSynthesis.speak(utterance);
+    }
+
+    function unlockVoice() {
+      voiceUnlocked = true;
+      speak(currentItem.word, { onlineOnly: true });
+    }
+
+    function renderTabs() {
+      els.themeTabs.innerHTML = themes.map((theme, index) => `
+        <button class="theme-tab ${index === currentThemeIndex ? "active" : ""}" type="button" data-theme="${index}">
+          <span class="tab-num">${String(index + 1).padStart(2, "0")}</span>
+          <span class="tab-title">${theme.title}<small>${theme.subtitle}</small></span>
+        </button>
+      `).join("");
+    }
+
+    async function drawThumb(canvas, theme, item) {
+      const img = await loadImage(theme.image);
+      const ctx = canvas.getContext("2d");
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(220, Math.round(rect.width * dpr));
+      const height = Math.max(130, Math.round(rect.height * dpr));
+      canvas.width = width;
+      canvas.height = height;
+      const sourceCrop = item.cropRect || {
+        x: crop.x + item.cropCol * (crop.w / 4),
+        y: crop.y + item.cropRow * (crop.h / 4),
+        w: crop.w / 4,
+        h: crop.h / 4
+      };
+      const sx = sourceCrop.x;
+      const sy = sourceCrop.y;
+      const sw = sourceCrop.w;
+      const sh = sourceCrop.h;
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
+    }
+
+    function selectItem(item, card) {
+      currentItem = item;
+      els.currentWord.textContent = item.word;
+      els.currentCn.textContent = item.cn;
+      document.querySelectorAll(".word-card.speaking").forEach((node) => node.classList.remove("speaking"));
+      if (card) {
+        card.classList.add("speaking");
+        setTimeout(() => card.classList.remove("speaking"), 520);
+      }
+      speak(item.word);
+    }
+
+    function renderCards() {
+      const theme = themes[currentThemeIndex];
+      els.cards.innerHTML = theme.items.map((item, index) => `
+        <button class="word-card" type="button" data-word="${index}">
+          <span class="thumb"><canvas aria-hidden="true"></canvas></span>
+          <span class="word-meta"><b class="${item.word.length > 16 ? "long-word" : ""}">${item.word}</b><span>${item.cn}</span></span>
+        </button>
+      `).join("");
+      els.cards.querySelectorAll(".word-card").forEach((card) => {
+        const item = theme.items[Number(card.dataset.word)];
+        card.addEventListener("click", () => selectItem(item, card));
+        drawThumb(card.querySelector("canvas"), theme, item);
+      });
+    }
+
+    function shuffle(array) {
+      return array.map((value) => ({ value, sort: Math.random() })).sort((a, b) => a.sort - b.sort).map(({ value }) => value);
+    }
+
+    function newQuiz() {
+      const theme = themes[currentThemeIndex];
+      quizItem = theme.items[Math.floor(Math.random() * theme.items.length)];
+      const wrongPool = shuffle(theme.items.filter((item) => item.cn !== quizItem.cn)).slice(0, 3);
+      const options = shuffle([quizItem, ...wrongPool]);
+      els.quizWord.textContent = quizItem.word;
+      els.feedback.textContent = "";
+      els.answers.innerHTML = options.map((item) => `
+        <button class="answer" type="button" data-cn="${item.cn}">${item.cn}</button>
+      `).join("");
+      els.answers.querySelectorAll(".answer").forEach((button) => {
+        button.addEventListener("click", () => {
+          const correct = button.dataset.cn === quizItem.cn;
+          els.answers.querySelectorAll(".answer").forEach((node) => {
+            if (node.dataset.cn === quizItem.cn) node.classList.add("correct");
+          });
+          if (!correct) button.classList.add("wrong");
+          els.feedback.textContent = correct ? "答对了！" : `正确答案：${quizItem.cn}`;
+          speak(quizItem.word);
+        }, { once: true });
+      });
+    }
+
+    function setTheme(index) {
+      currentThemeIndex = index;
+      const theme = themes[index];
+      currentItem = theme.items[0];
+      if (els.poster) {
+        els.poster.src = theme.image;
+        els.poster.alt = theme.title;
+      }
+      els.themeTitle.textContent = theme.title;
+      els.themeSubtitle.textContent = theme.subtitle;
+      els.currentWord.textContent = currentItem.word;
+      els.currentCn.textContent = currentItem.cn;
+      renderTabs();
+      renderCards();
+      newQuiz();
+    }
+
+    els.themeTabs.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-theme]");
+      if (button) setTheme(Number(button.dataset.theme));
+    });
+
+    els.repeatBtn.addEventListener("click", () => speak(currentItem.word));
+    els.quizBtn.addEventListener("click", newQuiz);
+    els.speakQuizBtn.addEventListener("click", () => quizItem && speak(quizItem.word));
+    els.voiceStatus.addEventListener("click", unlockVoice);
+    window.speechSynthesis?.addEventListener?.("voiceschanged", pickVoice);
+    window.addEventListener("resize", () => renderCards());
+
+    pickVoice();
+    setTheme(0);
+  </script>
+</body>
+</html>
