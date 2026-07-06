@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>管理后台登录 - Minecraft English Reader</title>
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body>
+  <main class="portal">
+    <section class="portal-card">
+      <h1>管理后台登录</h1>
+      <p>仅管理员账号可进入后台</p>
+      <form id="adminLoginForm">
+        <label>管理员用户名<input name="username" autocomplete="username" required></label>
+        <label>管理员密码<input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">进入管理后台</button>
+      </form>
+      <p class="portal-link"><a href="/login">返回学生登录</a></p>
+      <p class="message" id="message"></p>
+      <p class="notice">非官方学习工具，与 Mojang、Microsoft、Minecraft 官方无关联。</p>
+    </section>
+  </main>
+  <script>
+    const form = document.querySelector("#adminLoginForm");
+    const message = document.querySelector("#message");
+
+    async function logout() {
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.textContent = "正在登录...";
+      const body = Object.fromEntries(new FormData(form).entries());
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        message.textContent = data.error || "登录失败";
+        return;
+      }
+      if (data.user?.role !== "admin") {
+        await logout();
+        message.textContent = "该账号不是管理员";
+        return;
+      }
+      location.href = "/admin";
+    });
+  </script>
+</body>
+</html>

@@ -37,6 +37,10 @@ function normalizePhone(value) {
   return String(value || "").replace(/[^\d]/g, "");
 }
 
+function isValidPhone(value) {
+  return /^1[3-9]\d{9}$/.test(normalizePhone(value));
+}
+
 function normalizeInvite(value) {
   return String(value || "").trim().toUpperCase();
 }
@@ -189,6 +193,14 @@ function requireAdmin(req, res, next) {
 function requirePageAuth(req, res, next) {
   const user = currentUser(req);
   if (!user) return res.redirect("/login");
+  req.user = user;
+  return next();
+}
+
+function requireAdminPage(req, res, next) {
+  const user = currentUser(req);
+  if (!user) return res.redirect("/admin-login");
+  if (user.role !== "admin") return res.redirect("/");
   req.user = user;
   return next();
 }
@@ -382,19 +394,17 @@ app.use(session({
   cookie: {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.COOKIE_SECURE === "true",
     maxAge: 1000 * 60 * 60 * 24 * 14
   }
 }));
 
 app.get("/portal.css", (req, res) => res.sendFile(path.join(publicDir, "portal.css")));
 app.get("/login", (req, res) => res.sendFile(path.join(publicDir, "login.html")));
+app.get("/admin-login", (req, res) => res.sendFile(path.join(publicDir, "admin-login.html")));
 app.get("/register", (req, res) => res.sendFile(path.join(publicDir, "register.html")));
 app.get("/progress", requirePageAuth, (req, res) => res.sendFile(path.join(publicDir, "progress.html")));
-app.get("/admin", requirePageAuth, (req, res) => {
-  if (req.user.role !== "admin") return res.redirect("/");
-  return res.sendFile(path.join(publicDir, "admin.html"));
-});
+app.get("/admin", requireAdminPage, (req, res) => res.sendFile(path.join(publicDir, "admin.html")));
 
 app.post("/api/auth/register", (req, res) => {
   const phone = normalizePhone(req.body.phone);
@@ -402,8 +412,8 @@ app.post("/api/auth/register", (req, res) => {
   const username = String(req.body.username || "").trim();
   const password = String(req.body.password || "");
   const nickname = String(req.body.nickname || username).trim();
-  if (!phone || !inviteCode || !username || password.length < 6) {
-    return res.status(400).json({ error: "请填写手机号、邀请码、用户名和至少6位密码" });
+  if (!isValidPhone(phone) || !inviteCode || !username || password.length < 6) {
+    return res.status(400).json({ error: "请填写正确手机号、邀请码、用户名和至少6位密码" });
   }
   const whitelist = db.prepare("SELECT * FROM phone_whitelist WHERE phone = ?").get(phone);
   if (!whitelist || whitelist.status !== "unused") return res.status(400).json({ error: "手机号不在白名单或邀请码已失效" });
@@ -483,7 +493,7 @@ app.get("/api/admin/whitelist", requireAdmin, (req, res) => {
 app.post("/api/admin/whitelist", requireAdmin, (req, res) => {
   const phone = normalizePhone(req.body.phone);
   const note = String(req.body.note || "").trim();
-  if (phone.length < 6) return res.status(400).json({ error: "手机号格式不正确" });
+  if (!isValidPhone(phone)) return res.status(400).json({ error: "请输入正确的11位手机号" });
   const code = randomCode(6);
   try {
     const result = db.prepare(`

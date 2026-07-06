@@ -440,9 +440,13 @@
 
     .quiz-top {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: 1fr auto auto;
       gap: 12px;
       align-items: center;
+    }
+
+    .rotate-tip {
+      display: none;
     }
 
     .quiz-word {
@@ -532,9 +536,124 @@
       }
 
     }
+
+    @media (max-width: 940px) and (orientation: landscape) {
+      .topbar {
+        position: static;
+        grid-template-columns: 1fr auto;
+        padding: 6px 10px;
+      }
+
+      .brand h1 {
+        font-size: 20px;
+      }
+
+      .brand p,
+      .copyright-note {
+        display: none;
+      }
+
+      main {
+        grid-template-columns: 180px minmax(0, 1fr);
+        min-height: auto;
+        padding: 8px;
+      }
+
+      .sidebar {
+        position: static;
+        max-height: calc(100vh - 76px);
+      }
+
+      .theme-tab {
+        grid-template-columns: 34px 1fr;
+        gap: 6px;
+        padding: 7px;
+      }
+
+      .workspace {
+        grid-template-columns: minmax(0, 1fr) minmax(250px, 300px);
+        grid-template-rows: auto auto 1fr;
+        gap: 8px;
+      }
+
+      .hero {
+        grid-column: 2;
+        grid-row: 2;
+      }
+
+      .cards {
+        grid-column: 1;
+        grid-row: 2 / span 2;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .word-card {
+        min-height: 150px;
+      }
+
+      .thumb {
+        min-height: 82px;
+      }
+
+      .word-meta {
+        padding: 8px;
+      }
+
+      .word-meta b {
+        font-size: 16px;
+      }
+
+      .word-meta span {
+        font-size: 17px;
+      }
+
+      .quiz {
+        grid-column: 2;
+        grid-row: 3;
+        padding: 8px;
+      }
+
+      .quiz-word {
+        font-size: 28px;
+      }
+
+      .answer {
+        min-height: 42px;
+        font-size: 17px;
+      }
+    }
+
+    @media (max-width: 760px) and (orientation: portrait) {
+      .rotate-tip {
+        position: fixed;
+        inset: 0;
+        z-index: 999;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(20, 36, 18, .94);
+        color: #fff9e8;
+        text-align: center;
+      }
+
+      .rotate-tip div {
+        max-width: 360px;
+        padding: 22px;
+        border: 4px solid #f5c94d;
+        border-radius: 8px;
+        background: #2f4d28;
+        font-size: 22px;
+        font-weight: 900;
+        line-height: 1.35;
+      }
+    }
   </style>
 </head>
 <body>
+  <div class="rotate-tip" aria-hidden="true">
+    <div>请将手机横屏使用，卡片和答题区会更清楚。</div>
+  </div>
   <div class="app">
     <header class="topbar">
       <div class="brand">
@@ -543,7 +662,6 @@
       </div>
       <div class="top-actions">
         <a class="top-link" href="/progress">我的进度</a>
-        <a class="top-link" href="/admin" id="adminLink" hidden>管理后台</a>
         <button class="top-link button" id="logoutBtn" type="button">退出</button>
         <button class="status-pill" id="voiceStatus" type="button">开启语音</button>
       </div>
@@ -572,7 +690,6 @@
             </div>
             <div class="panel-actions">
               <button class="big-action" id="repeatBtn" type="button">再读一次</button>
-              <button class="big-action secondary" id="quizBtn" type="button">下一题</button>
             </div>
           </aside>
         </section>
@@ -583,6 +700,7 @@
           <div class="quiz-top">
             <h2 class="quiz-word" id="quizWord"></h2>
             <button class="big-action secondary" id="speakQuizBtn" type="button">读题</button>
+            <button class="big-action secondary" id="quizBtn" type="button">下一题</button>
           </div>
           <div class="answers" id="answers"></div>
           <div class="feedback" id="feedback"></div>
@@ -858,7 +976,6 @@
     let studyMode = "learn";
 
     const els = {
-      adminLink: document.querySelector("#adminLink"),
       logoutBtn: document.querySelector("#logoutBtn"),
       themeTabs: document.querySelector("#themeTabs"),
       poster: document.querySelector("#themePoster"),
@@ -896,9 +1013,7 @@
     async function initUser() {
       try {
         const data = await api("/api/me");
-        if (data?.user?.role === "admin") {
-          els.adminLink.hidden = false;
-        }
+        document.body.dataset.role = data?.user?.role || "user";
       } catch {}
     }
 
