@@ -17,6 +17,16 @@ const dbPath = process.env.DATABASE_PATH || path.join(dataDir, "app.db");
 const port = Number(process.env.PORT || 3000);
 const inviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const passwordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+const rewardLevels = [
+  { level: 1, minExp: 0, title: "煤炭新手", gemKey: "coal" },
+  { level: 2, minExp: 60, title: "铁锭学徒", gemKey: "iron" },
+  { level: 3, minExp: 150, title: "金锭冒险家", gemKey: "gold" },
+  { level: 4, minExp: 290, title: "红石能手", gemKey: "redstone" },
+  { level: 5, minExp: 480, title: "青金石法师", gemKey: "lapis" },
+  { level: 6, minExp: 730, title: "绿宝石大师", gemKey: "emerald" },
+  { level: 7, minExp: 1050, title: "钻石勇士", gemKey: "diamond" },
+  { level: 8, minExp: 1450, title: "下界合金传奇", gemKey: "netherite" }
+];
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 fs.mkdirSync(audioDir, { recursive: true });
@@ -265,6 +275,40 @@ function initDb() {
       PRIMARY KEY(user_id, study_date),
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
+
+    CREATE TABLE IF NOT EXISTS user_rewards (
+      user_id INTEGER PRIMARY KEY,
+      total_exp INTEGER NOT NULL DEFAULT 0,
+      today_exp INTEGER NOT NULL DEFAULT 0,
+      reward_date TEXT NOT NULL,
+      streak_correct INTEGER NOT NULL DEFAULT 0,
+      fixed_reviews INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS reward_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      exp INTEGER NOT NULL DEFAULT 0,
+      label TEXT NOT NULL DEFAULT '',
+      theme_id TEXT DEFAULT '',
+      word TEXT DEFAULT '',
+      unique_key TEXT UNIQUE,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS theme_badges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      theme_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(user_id, theme_id),
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
   `);
 }
 
@@ -436,6 +480,8 @@ function answerQuiz(userId, themeId, word, selectedCn) {
   const state = getQuizState(userId, themeId);
   const correct = item.cn === selectedCn;
   const queue = db.prepare("SELECT * FROM review_queue WHERE user_id = ? AND theme_id = ? AND word = ?").get(userId, themeId, word);
+  const hadActiveReview = Boolean(queue && queue.status === "active");
+  let fixedReview = false;
 
   let consecutiveCorrect = correct ? 1 : 0;
   const existingProgress = db.prepare("SELECT consecutive_correct FROM word_progress WHERE user_id = ? AND theme_id = ? AND word = ?")
@@ -473,13 +519,18 @@ function answerQuiz(userId, themeId, word, selectedCn) {
     if (fixedCount >= 2) {
       db.prepare("UPDATE review_queue SET status = 'fixed', consecutive_fix_count = ?, updated_at = ? WHERE id = ?")
         .run(fixedCount, now(), queue.id);
+      fixedReview = true;
     } else {
       scheduleReview(userId, themeId, word, state.question_no, fixedCount);
     }
   }
 
   touchSession(userId, "answer", correct);
-  return { correct, correctCn: item.cn };
+  return {
+    correct,
+    correctCn: item.cn,
+    ...rewardAnswer(userId, theme, word, correct, hadActiveReview, fixedReview)
+  };
 }
 
 function progressSummary(userId) {
@@ -516,6 +567,218 @@ function progressSummary(userId) {
   }, { totalWords: 0, studiedWords: 0, masteredWords: 0, reviewCount: 0 });
 
   return { totals, themes: themesSummary };
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function ensureRewardRow(userId) {
+  const date = todayKey();
+  let row = db.prepare("SELECT * FROM user_rewards WHERE user_id = ?").get(userId);
+  if (!row) {
+    db.prepare(`
+      INSERT INTO user_rewards (user_id, reward_date, updated_at)
+      VALUES (?, ?, ?)
+    `).run(userId, date, now());
+    row = db.prepare("SELECT * FROM user_rewards WHERE user_id = ?").get(userId);
+  }
+  if (row.reward_date !== date) {
+    db.prepare(`
+      UPDATE user_rewards
+      SET today_exp = 0, reward_date = ?, updated_at = ?
+      WHERE user_id = ?
+    `).run(date, now(), userId);
+    row = db.prepare("SELECT * FROM user_rewards WHERE user_id = ?").get(userId);
+  }
+  return row;
+}
+
+function levelInfo(totalExp) {
+  let current = rewardLevels[0];
+  for (const level of rewardLevels) {
+    if (totalExp >= level.minExp) current = level;
+  }
+  const next = rewardLevels.find((level) => level.minExp > current.minExp);
+  const nextMinExp = next ? next.minExp : current.minExp + 500;
+  const levelExp = Math.max(0, totalExp - current.minExp);
+  const levelNeed = Math.max(1, nextMinExp - current.minExp);
+  return {
+    level: current.level,
+    title: current.title,
+    gemKey: current.gemKey,
+    levelExp,
+    levelNeed,
+    progressPercent: Math.min(100, Math.round((levelExp / levelNeed) * 100))
+  };
+}
+
+function rewardSummary(userId) {
+  const row = ensureRewardRow(userId);
+  const level = levelInfo(row.total_exp);
+  const badges = db.prepare(`
+    SELECT theme_id AS themeId, title, created_at AS createdAt
+    FROM theme_badges WHERE user_id = ? ORDER BY created_at DESC
+  `).all(userId);
+  const recentEvents = db.prepare(`
+    SELECT event_type AS type, exp, label, theme_id AS themeId, word, created_at AS createdAt
+    FROM reward_events WHERE user_id = ? ORDER BY id DESC LIMIT 5
+  `).all(userId);
+  return {
+    ...level,
+    totalExp: row.total_exp,
+    todayExp: row.today_exp,
+    streakCorrect: row.streak_correct,
+    fixedReviews: row.fixed_reviews,
+    badges,
+    recentEvents
+  };
+}
+
+function eventPayload(event) {
+  return {
+    type: event.event_type || event.type,
+    exp: event.exp || 0,
+    label: event.label || "",
+    themeId: event.theme_id || event.themeId || "",
+    word: event.word || ""
+  };
+}
+
+function grantReward(userId, event) {
+  const beforeLevel = levelInfo(ensureRewardRow(userId).total_exp).level;
+  let inserted = null;
+  try {
+    const result = db.prepare(`
+      INSERT INTO reward_events (user_id, event_type, exp, label, theme_id, word, unique_key, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      userId,
+      event.type,
+      event.exp,
+      event.label || "",
+      event.themeId || "",
+      event.word || "",
+      event.uniqueKey || null,
+      now()
+    );
+    inserted = { id: result.lastInsertRowid, ...event };
+  } catch (error) {
+    if (!event.uniqueKey || !String(error.message || "").includes("UNIQUE")) throw error;
+    return { events: [], state: rewardSummary(userId) };
+  }
+
+  if (event.exp > 0) {
+    db.prepare(`
+      UPDATE user_rewards
+      SET total_exp = total_exp + ?,
+          today_exp = today_exp + ?,
+          updated_at = ?
+      WHERE user_id = ?
+    `).run(event.exp, event.exp, now(), userId);
+  }
+
+  const state = rewardSummary(userId);
+  const events = [eventPayload(inserted)];
+  if (state.level > beforeLevel) {
+    events.push({
+      type: "level_up",
+      exp: 0,
+      label: `升级到 ${state.title}`,
+      level: state.level,
+      gemKey: state.gemKey
+    });
+  }
+  return { events, state };
+}
+
+function mergeRewardResult(target, rewardResult) {
+  if (!rewardResult) return target;
+  target.rewardEvents.push(...rewardResult.events);
+  target.rewardState = rewardResult.state;
+  return target;
+}
+
+function maybeGrantThemeBadge(userId, theme) {
+  const mastered = db.prepare(`
+    SELECT COUNT(*) AS count FROM word_progress
+    WHERE user_id = ? AND theme_id = ? AND mastery_status = 'mastered'
+  `).get(userId, theme.id).count;
+  if (mastered < theme.items.length) return { events: [], state: rewardSummary(userId) };
+  try {
+    db.prepare(`
+      INSERT INTO theme_badges (user_id, theme_id, title, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(userId, theme.id, theme.title, now());
+  } catch (error) {
+    if (!String(error.message || "").includes("UNIQUE")) throw error;
+    return { events: [], state: rewardSummary(userId) };
+  }
+  return grantReward(userId, {
+    type: "theme_badge",
+    exp: 60,
+    label: `完成主题：${theme.title}`,
+    themeId: theme.id,
+    uniqueKey: `theme:${userId}:${theme.id}`
+  });
+}
+
+function rewardRead(userId, themeId, word) {
+  const date = todayKey();
+  return grantReward(userId, {
+    type: "read",
+    exp: 1,
+    label: "点读练习 +1",
+    themeId,
+    word,
+    uniqueKey: `read:${userId}:${date}:${themeId}:${word}`
+  });
+}
+
+function rewardAnswer(userId, theme, word, correct, hadActiveReview, fixedReview) {
+  const result = { rewardEvents: [], rewardState: rewardSummary(userId) };
+  const row = ensureRewardRow(userId);
+  if (!correct) {
+    db.prepare("UPDATE user_rewards SET streak_correct = 0, updated_at = ? WHERE user_id = ?").run(now(), userId);
+    result.rewardState = rewardSummary(userId);
+    return result;
+  }
+
+  const nextStreak = row.streak_correct + 1;
+  db.prepare("UPDATE user_rewards SET streak_correct = ?, updated_at = ? WHERE user_id = ?").run(nextStreak, now(), userId);
+  mergeRewardResult(result, grantReward(userId, {
+    type: hadActiveReview ? "review_correct" : "correct",
+    exp: hadActiveReview ? 12 : 8,
+    label: hadActiveReview ? "错题答对 +12" : "答题正确 +8",
+    themeId: theme.id,
+    word
+  }));
+
+  if (nextStreak === 3 || nextStreak === 5 || nextStreak === 10 || (nextStreak > 10 && nextStreak % 10 === 0)) {
+    const bonus = nextStreak >= 10 ? 22 : nextStreak === 5 ? 15 : 10;
+    mergeRewardResult(result, grantReward(userId, {
+      type: "streak",
+      exp: bonus,
+      label: `连对 x${nextStreak} +${bonus}`,
+      themeId: theme.id,
+      word
+    }));
+  }
+
+  if (fixedReview) {
+    db.prepare("UPDATE user_rewards SET fixed_reviews = fixed_reviews + 1, updated_at = ? WHERE user_id = ?").run(now(), userId);
+    mergeRewardResult(result, grantReward(userId, {
+      type: "review_fixed",
+      exp: 25,
+      label: "错题已修正 +25",
+      themeId: theme.id,
+      word
+    }));
+  }
+
+  mergeRewardResult(result, maybeGrantThemeBadge(userId, theme));
+  result.rewardState = rewardSummary(userId);
+  return result;
 }
 
 initDb();
@@ -594,13 +857,15 @@ app.post("/api/auth/logout", (req, res) => {
 app.get("/api/me", requireAuth, (req, res) => res.json({ user: publicUser(req.user) }));
 app.get("/api/themes", requireAuth, (req, res) => res.json({ themes }));
 app.get("/api/progress", requireAuth, (req, res) => res.json(progressSummary(req.user.id)));
+app.get("/api/rewards", requireAuth, (req, res) => res.json({ rewardState: rewardSummary(req.user.id) }));
 
 app.post("/api/progress/word", requireAuth, (req, res) => {
   const themeId = String(req.body.themeId || "");
   const word = String(req.body.word || "");
   if (!themeMap.get(themeId)) return res.status(400).json({ error: "未知主题" });
   upsertReadProgress(req.user.id, themeId, word);
-  return res.json({ ok: true });
+  const reward = rewardRead(req.user.id, themeId, word);
+  return res.json({ ok: true, rewardEvents: reward.events, rewardState: reward.state });
 });
 
 app.get("/api/tts", requireAuth, async (req, res) => {
