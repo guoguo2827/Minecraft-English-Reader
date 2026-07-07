@@ -247,6 +247,260 @@
       color: #72512a;
     }
 
+    .reward-board {
+      position: relative;
+      display: grid;
+      gap: 10px;
+      min-height: 246px;
+      overflow: hidden;
+      padding: 12px;
+      border: 4px solid #2a1a0c;
+      border-radius: 8px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.15), transparent 34%),
+        repeating-linear-gradient(45deg, rgba(255,255,255,.08) 0 10px, transparent 10px 20px),
+        linear-gradient(180deg, #223520, #142516);
+      color: #fff8da;
+      box-shadow: inset 0 -8px 0 rgba(0,0,0,.26), 0 10px 18px rgba(45, 35, 18, .16);
+    }
+
+    .reward-board::before {
+      content: "";
+      position: absolute;
+      inset: -34% -20% auto;
+      height: 150px;
+      opacity: .28;
+      background: radial-gradient(circle, var(--gem-glow, #54f0d8), transparent 68%);
+      transform: translateY(-16px);
+      pointer-events: none;
+    }
+
+    .reward-head {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .gem-stage {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 96px;
+      height: 96px;
+      border: 4px solid rgba(255,255,255,.28);
+      border-radius: 8px;
+      background: rgba(0,0,0,.2);
+      box-shadow: inset 0 -5px 0 rgba(0,0,0,.24), 0 0 26px var(--gem-glow, rgba(84,240,216,.45));
+    }
+
+    .gem-stage svg {
+      width: 74px;
+      height: 74px;
+      image-rendering: pixelated;
+      filter: drop-shadow(0 8px 0 rgba(0,0,0,.22));
+      animation: gem-idle 2.8s ease-in-out infinite;
+    }
+
+    .reward-board.reward-pulse .gem-stage svg {
+      animation: gem-pop .7s ease;
+    }
+
+    .reward-board.level-up .gem-stage svg {
+      animation: gem-level-up 1.2s ease;
+    }
+
+    .reward-copy {
+      min-width: 0;
+    }
+
+    .reward-kicker {
+      margin: 0;
+      color: #bce9a4;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .reward-title {
+      margin: 2px 0;
+      font-size: clamp(24px, 2.4vw, 34px);
+      line-height: 1;
+      font-weight: 1000;
+      overflow-wrap: anywhere;
+    }
+
+    .reward-exp {
+      margin: 0;
+      color: #ffe89b;
+      font-weight: 900;
+    }
+
+    .reward-bar {
+      position: relative;
+      z-index: 1;
+      height: 20px;
+      overflow: hidden;
+      border: 3px solid rgba(255,255,255,.32);
+      border-radius: 8px;
+      background: rgba(0,0,0,.28);
+    }
+
+    .reward-fill {
+      width: 0%;
+      height: 100%;
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.35), transparent 30%),
+        linear-gradient(90deg, var(--gem-dark, #1f8f75), var(--gem-main, #48e1c8), var(--gem-light, #d9fff7));
+      box-shadow: 0 0 18px var(--gem-glow, #54f0d8);
+      transition: width .55s cubic-bezier(.2, .9, .25, 1);
+    }
+
+    .reward-stats {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .reward-stat {
+      min-width: 0;
+      padding: 8px;
+      border: 2px solid rgba(255,255,255,.22);
+      border-radius: 8px;
+      background: rgba(255,255,255,.1);
+      text-align: center;
+      font-weight: 900;
+    }
+
+    .reward-stat strong {
+      display: block;
+      color: #fff;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .reward-stat span {
+      display: block;
+      margin-top: 4px;
+      color: #cce8bd;
+      font-size: 12px;
+    }
+
+    .reward-toast {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      z-index: 3;
+      max-width: calc(100% - 24px);
+      padding: 8px 10px;
+      border: 3px solid #ffe89b;
+      border-radius: 8px;
+      background: rgba(25, 40, 19, .94);
+      color: #fff8da;
+      font-weight: 1000;
+      transform: translateY(12px);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .reward-toast.show {
+      animation: reward-toast .9s ease;
+    }
+
+    .gem-particle {
+      position: fixed;
+      z-index: 999;
+      width: 12px;
+      height: 12px;
+      background: var(--gem-main, #48e1c8);
+      border: 2px solid rgba(255,255,255,.55);
+      box-shadow: 0 0 12px var(--gem-glow, #54f0d8);
+      transform: translate3d(var(--from-x), var(--from-y), 0) rotate(45deg) scale(.75);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform .68s cubic-bezier(.18,.9,.25,1), opacity .68s ease;
+    }
+
+    .gem-particle.fly {
+      transform: translate3d(var(--to-x), var(--to-y), 0) rotate(135deg) scale(1.05);
+      opacity: 1;
+    }
+
+    .spark-ring {
+      position: fixed;
+      z-index: 998;
+      width: 12px;
+      height: 12px;
+      border: 3px solid var(--gem-light, #d9fff7);
+      box-shadow: 0 0 16px var(--gem-glow, #54f0d8);
+      transform: translate3d(var(--x), var(--y), 0) scale(.4) rotate(45deg);
+      opacity: .95;
+      pointer-events: none;
+      animation: spark-burst .78s ease forwards;
+    }
+
+    .reward-board.repair {
+      animation: repair-glow .9s ease;
+    }
+
+    .reward-board.streak {
+      animation: streak-glow .9s ease;
+    }
+
+    @keyframes gem-idle {
+      50% { transform: translateY(-3px); }
+    }
+
+    @keyframes gem-pop {
+      45% { transform: scale(1.14) rotate(8deg); }
+      100% { transform: scale(1) rotate(0); }
+    }
+
+    @keyframes gem-level-up {
+      20% { transform: scale(1.2) rotate(-10deg); }
+      55% { transform: scale(1.32) rotate(12deg); }
+      100% { transform: scale(1) rotate(0); }
+    }
+
+    @keyframes reward-toast {
+      0% { opacity: 0; transform: translateY(12px); }
+      18%, 78% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-6px); }
+    }
+
+    @keyframes spark-burst {
+      100% {
+        transform: translate3d(calc(var(--x) + var(--dx)), calc(var(--y) + var(--dy)), 0) scale(.9) rotate(135deg);
+        opacity: 0;
+      }
+    }
+
+    @keyframes repair-glow {
+      35% { box-shadow: inset 0 -8px 0 rgba(0,0,0,.26), 0 0 0 8px rgba(115, 255, 155, .26); }
+    }
+
+    @keyframes streak-glow {
+      35% { box-shadow: inset 0 -8px 0 rgba(0,0,0,.26), 0 0 0 8px rgba(255, 232, 95, .28); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .gem-stage svg,
+      .reward-board.reward-pulse .gem-stage svg,
+      .reward-board.level-up .gem-stage svg,
+      .reward-board.repair,
+      .reward-board.streak {
+        animation: none;
+      }
+
+      .gem-particle,
+      .spark-ring {
+        display: none;
+      }
+    }
+
     .now-word {
       display: grid;
       place-items: center;
@@ -484,6 +738,10 @@
       border-color: #b64031;
     }
 
+    .answer:disabled {
+      cursor: default;
+    }
+
     .feedback {
       min-height: 30px;
       font-size: 20px;
@@ -609,6 +867,47 @@
         font-size: 17px;
       }
 
+      .learning-panel {
+        padding: 8px;
+      }
+
+      .reward-board {
+        min-height: 182px;
+        gap: 7px;
+        padding: 8px;
+      }
+
+      .reward-head {
+        grid-template-columns: 68px 1fr;
+        gap: 8px;
+      }
+
+      .gem-stage {
+        width: 68px;
+        height: 68px;
+      }
+
+      .gem-stage svg {
+        width: 52px;
+        height: 52px;
+      }
+
+      .reward-title {
+        font-size: 22px;
+      }
+
+      .reward-exp {
+        font-size: 13px;
+      }
+
+      .reward-stat {
+        padding: 6px;
+      }
+
+      .reward-stat strong {
+        font-size: 18px;
+      }
+
       .quiz {
         grid-column: 2;
         grid-row: 3;
@@ -683,14 +982,22 @@
               <h2 id="themeTitle"></h2>
               <p id="themeSubtitle"></p>
             </div>
-            <div class="now-word">
-              <div>
-                <strong id="currentWord">block</strong>
-                <span id="currentCn">方块</span>
+            <div class="reward-board" id="rewardPanel" data-gem="coal">
+              <div class="reward-head">
+                <div class="gem-stage" id="rewardGem" aria-hidden="true"></div>
+                <div class="reward-copy">
+                  <p class="reward-kicker" id="rewardKicker">我的宝石等级</p>
+                  <h3 class="reward-title" id="rewardTitle">Lv1 煤炭新手</h3>
+                  <p class="reward-exp" id="rewardExp">0 / 60 EXP</p>
+                </div>
               </div>
-            </div>
-            <div class="panel-actions">
-              <button class="big-action" id="repeatBtn" type="button">再读一次</button>
+              <div class="reward-bar" aria-hidden="true"><div class="reward-fill" id="rewardFill"></div></div>
+              <div class="reward-stats">
+                <div class="reward-stat"><strong id="rewardToday">0</strong><span>今日获得</span></div>
+                <div class="reward-stat"><strong id="rewardStreak">0</strong><span>连续答对</span></div>
+                <div class="reward-stat"><strong id="rewardFixed">0</strong><span>修正错题</span></div>
+              </div>
+              <div class="reward-toast" id="rewardToast"></div>
             </div>
           </aside>
         </section>
@@ -1283,6 +1590,17 @@
     let nextFallbackAudio = null;
     let ttsAudio = null;
     let studyMode = "learn";
+    let rewardState = null;
+    const gemThemes = {
+      coal: { main: "#3f4548", dark: "#171a1c", light: "#9ca5a8", glow: "rgba(190,205,210,.55)" },
+      iron: { main: "#c9d0d2", dark: "#6f777b", light: "#f6fbff", glow: "rgba(230,242,247,.62)" },
+      gold: { main: "#f5c94d", dark: "#9c6a16", light: "#fff2a8", glow: "rgba(255,220,84,.72)" },
+      redstone: { main: "#dc3f38", dark: "#7f1514", light: "#ff9f8f", glow: "rgba(255,78,62,.68)" },
+      lapis: { main: "#356fdd", dark: "#183481", light: "#9ecbff", glow: "rgba(77,133,255,.7)" },
+      emerald: { main: "#24c76a", dark: "#08733d", light: "#a5ffd0", glow: "rgba(57,239,135,.72)" },
+      diamond: { main: "#49dce7", dark: "#138391", light: "#d5ffff", glow: "rgba(84,240,255,.78)" },
+      netherite: { main: "#5d5166", dark: "#251d2b", light: "#c6b5d0", glow: "rgba(185,146,220,.65)" }
+    };
 
     const els = {
       logoutBtn: document.querySelector("#logoutBtn"),
@@ -1291,12 +1609,19 @@
       themeTitle: document.querySelector("#themeTitle"),
       themeSubtitle: document.querySelector("#themeSubtitle"),
       cards: document.querySelector("#cards"),
-      currentWord: document.querySelector("#currentWord"),
-      currentCn: document.querySelector("#currentCn"),
-      repeatBtn: document.querySelector("#repeatBtn"),
+      rewardPanel: document.querySelector("#rewardPanel"),
+      rewardGem: document.querySelector("#rewardGem"),
+      rewardTitle: document.querySelector("#rewardTitle"),
+      rewardExp: document.querySelector("#rewardExp"),
+      rewardFill: document.querySelector("#rewardFill"),
+      rewardToday: document.querySelector("#rewardToday"),
+      rewardStreak: document.querySelector("#rewardStreak"),
+      rewardFixed: document.querySelector("#rewardFixed"),
+      rewardToast: document.querySelector("#rewardToast"),
       quizBtn: document.querySelector("#quizBtn"),
       quizWord: document.querySelector("#quizWord"),
       speakQuizBtn: document.querySelector("#speakQuizBtn"),
+      quiz: document.querySelector("#quiz"),
       answers: document.querySelector("#answers"),
       feedback: document.querySelector("#feedback"),
       voiceStatus: document.querySelector("#voiceStatus"),
@@ -1329,6 +1654,136 @@
     function setStudyMode(mode) {
       studyMode = mode === "quiz" ? "quiz" : "learn";
       document.body.dataset.studyMode = studyMode;
+    }
+
+    function gemSvg(theme) {
+      return `
+        <svg viewBox="0 0 64 64" role="img" aria-label="宝石等级">
+          <rect x="18" y="4" width="28" height="8" fill="${theme.light}"/>
+          <rect x="10" y="12" width="44" height="10" fill="${theme.main}"/>
+          <rect x="6" y="22" width="52" height="14" fill="${theme.dark}"/>
+          <rect x="14" y="22" width="36" height="14" fill="${theme.main}"/>
+          <rect x="18" y="36" width="28" height="14" fill="${theme.main}"/>
+          <rect x="24" y="50" width="16" height="8" fill="${theme.dark}"/>
+          <rect x="22" y="14" width="12" height="8" fill="${theme.light}"/>
+          <rect x="40" y="24" width="8" height="10" fill="${theme.light}"/>
+        </svg>
+      `;
+    }
+
+    function applyGemTheme(gemKey) {
+      const theme = gemThemes[gemKey] || gemThemes.coal;
+      els.rewardPanel.style.setProperty("--gem-main", theme.main);
+      els.rewardPanel.style.setProperty("--gem-dark", theme.dark);
+      els.rewardPanel.style.setProperty("--gem-light", theme.light);
+      els.rewardPanel.style.setProperty("--gem-glow", theme.glow);
+      els.rewardGem.innerHTML = gemSvg(theme);
+      els.rewardPanel.dataset.gem = gemKey || "coal";
+      return theme;
+    }
+
+    function renderRewardPanel(state) {
+      if (!state) return;
+      rewardState = state;
+      applyGemTheme(state.gemKey);
+      els.rewardTitle.textContent = `Lv${state.level} ${state.title}`;
+      els.rewardExp.textContent = `${state.levelExp} / ${state.levelNeed} EXP`;
+      els.rewardFill.style.width = `${state.progressPercent || 0}%`;
+      els.rewardToday.textContent = state.todayExp || 0;
+      els.rewardStreak.textContent = state.streakCorrect || 0;
+      els.rewardFixed.textContent = state.fixedReviews || 0;
+    }
+
+    function showRewardToast(text) {
+      if (!text) return;
+      els.rewardToast.textContent = text;
+      els.rewardToast.classList.remove("show");
+      void els.rewardToast.offsetWidth;
+      els.rewardToast.classList.add("show");
+    }
+
+    function pulseReward(className, duration = 900) {
+      els.rewardPanel.classList.remove(className);
+      void els.rewardPanel.offsetWidth;
+      els.rewardPanel.classList.add(className);
+      setTimeout(() => els.rewardPanel.classList.remove(className), duration);
+    }
+
+    function rectCenter(node) {
+      const rect = node.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+
+    function spawnGemParticles(sourceNode, count = 4) {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const from = sourceNode ? rectCenter(sourceNode) : rectCenter(els.quiz);
+      const to = rectCenter(els.rewardGem);
+      const theme = gemThemes[rewardState?.gemKey] || gemThemes.coal;
+      for (let i = 0; i < count; i += 1) {
+        const particle = document.createElement("span");
+        particle.className = "gem-particle";
+        particle.style.setProperty("--gem-main", theme.main);
+        particle.style.setProperty("--gem-glow", theme.glow);
+        particle.style.setProperty("--from-x", `${from.x + (Math.random() * 38 - 19)}px`);
+        particle.style.setProperty("--from-y", `${from.y + (Math.random() * 24 - 12)}px`);
+        particle.style.setProperty("--to-x", `${to.x + (Math.random() * 22 - 11)}px`);
+        particle.style.setProperty("--to-y", `${to.y + (Math.random() * 22 - 11)}px`);
+        document.body.appendChild(particle);
+        requestAnimationFrame(() => particle.classList.add("fly"));
+        setTimeout(() => particle.remove(), 760);
+      }
+    }
+
+    function burstGem() {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const center = rectCenter(els.rewardGem);
+      const theme = gemThemes[rewardState?.gemKey] || gemThemes.coal;
+      for (let i = 0; i < 12; i += 1) {
+        const angle = (Math.PI * 2 * i) / 12;
+        const spark = document.createElement("span");
+        spark.className = "spark-ring";
+        spark.style.setProperty("--gem-light", theme.light);
+        spark.style.setProperty("--gem-glow", theme.glow);
+        spark.style.setProperty("--x", `${center.x}px`);
+        spark.style.setProperty("--y", `${center.y}px`);
+        spark.style.setProperty("--dx", `${Math.cos(angle) * 62}px`);
+        spark.style.setProperty("--dy", `${Math.sin(angle) * 46}px`);
+        document.body.appendChild(spark);
+        setTimeout(() => spark.remove(), 820);
+      }
+    }
+
+    function playRewardEvents(events = [], sourceNode = null) {
+      if (!events.length) return;
+      events.forEach((event, index) => {
+        setTimeout(() => {
+          if (event.type === "level_up") {
+            pulseReward("level-up", 1200);
+            burstGem();
+            showRewardToast(event.label || "宝石升级");
+            return;
+          }
+          if (event.type === "review_fixed") {
+            pulseReward("repair", 900);
+          } else if (event.type === "streak") {
+            pulseReward("streak", 900);
+          } else {
+            pulseReward("reward-pulse", 700);
+          }
+          spawnGemParticles(sourceNode, event.type === "theme_badge" ? 7 : event.type === "streak" ? 6 : 4);
+          showRewardToast(event.label || (event.exp ? `获得 +${event.exp} EXP` : ""));
+        }, index * 220);
+      });
+    }
+
+    async function initRewards() {
+      const data = await api("/api/rewards").catch(() => null);
+      if (data?.rewardState) renderRewardPanel(data.rewardState);
+    }
+
+    function handleRewardResponse(data, sourceNode) {
+      if (data?.rewardState) renderRewardPanel(data.rewardState);
+      if (data?.rewardEvents?.length) playRewardEvents(data.rewardEvents, sourceNode);
     }
 
     function loadImage(src) {
@@ -1529,8 +1984,6 @@
 
     function selectItem(item, card) {
       currentItem = item;
-      els.currentWord.textContent = item.word;
-      els.currentCn.textContent = item.cn;
       document.querySelectorAll(".word-card.speaking").forEach((node) => node.classList.remove("speaking"));
       if (card) {
         card.classList.add("speaking");
@@ -1539,7 +1992,7 @@
       api("/api/progress/word", {
         method: "POST",
         body: JSON.stringify({ themeId: themes[currentThemeIndex].id, word: item.word })
-      }).catch(() => {});
+      }).then((data) => handleRewardResponse(data, card)).catch(() => {});
       speak(item.word);
     }
 
@@ -1576,22 +2029,28 @@
       els.answers.innerHTML = options.map((cn) => `
         <button class="answer" type="button" data-cn="${cn}">${cn}</button>
       `).join("");
+      let answered = false;
       els.answers.querySelectorAll(".answer").forEach((button) => {
         button.addEventListener("click", async () => {
+          if (answered) return;
+          answered = true;
           const result = await api("/api/quiz/answer", {
             method: "POST",
             body: JSON.stringify({ themeId: theme.id, word: quizItem.word, selectedCn: button.dataset.cn })
           }).catch((error) => ({ error: error.message }));
           if (result?.error) {
+            answered = false;
             els.feedback.textContent = result.error;
             return;
           }
           const correct = Boolean(result.correct);
           els.answers.querySelectorAll(".answer").forEach((node) => {
+            node.disabled = true;
             if (node.dataset.cn === result.correctCn) node.classList.add("correct");
           });
           if (!correct) button.classList.add("wrong");
-          els.feedback.textContent = correct ? "答对了！" : `正确答案：${result.correctCn}`;
+          els.feedback.textContent = correct ? "答对了！" : "正确答案：" + result.correctCn;
+          handleRewardResponse(result, button);
           speak(quizItem.word);
         }, { once: true });
       });
@@ -1607,8 +2066,6 @@
       }
       els.themeTitle.textContent = theme.title;
       els.themeSubtitle.textContent = theme.subtitle;
-      els.currentWord.textContent = currentItem.word;
-      els.currentCn.textContent = currentItem.cn;
       renderTabs();
       renderCards();
       newQuiz();
@@ -1620,7 +2077,6 @@
       if (button) setTheme(Number(button.dataset.theme));
     });
 
-    els.repeatBtn.addEventListener("click", () => speak(currentItem.word));
     els.quizBtn.addEventListener("click", newQuiz);
     els.speakQuizBtn.addEventListener("click", () => quizItem && speak(quizItem.word));
     els.voiceStatus.addEventListener("click", unlockVoice);
@@ -1635,6 +2091,7 @@
     window.addEventListener("resize", () => renderCards());
 
     initUser();
+    initRewards();
     setStudyMode("learn");
     pickVoice();
     setTheme(0);
