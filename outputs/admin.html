@@ -29,6 +29,11 @@
 
       <h2>白名单与邀请码</h2>
       <div class="list" id="whitelist"></div>
+      <div class="pager">
+        <button class="secondary" id="prevWhitelistBtn" type="button">上一页</button>
+        <span id="whitelistPageInfo">第 1 页</span>
+        <button class="secondary" id="nextWhitelistBtn" type="button">下一页</button>
+      </div>
 
       <h2>用户与学习统计</h2>
       <div class="toolbar">
@@ -48,16 +53,21 @@
     const form = document.querySelector("#whitelistForm");
     const phoneInput = form.elements.phone;
     const message = document.querySelector("#message");
+    const prevWhitelistBtn = document.querySelector("#prevWhitelistBtn");
+    const nextWhitelistBtn = document.querySelector("#nextWhitelistBtn");
+    const whitelistPageInfo = document.querySelector("#whitelistPageInfo");
     const userPhoneSearch = document.querySelector("#userPhoneSearch");
     const userSearchBtn = document.querySelector("#userSearchBtn");
     const prevUsersBtn = document.querySelector("#prevUsersBtn");
     const nextUsersBtn = document.querySelector("#nextUsersBtn");
     const usersPageInfo = document.querySelector("#usersPageInfo");
     let whitelistItems = [];
+    let whitelistPage = 1;
+    let whitelistTotalPages = 1;
     let userItems = [];
     let usersPage = 1;
     let usersTotalPages = 1;
-    const usersPageSize = 20;
+    const listPageSize = 10;
 
     async function api(url, options = {}) {
       const response = await fetch(url, {
@@ -99,9 +109,15 @@
       textarea.remove();
     }
 
-    async function loadWhitelist() {
-      const data = await api("/api/admin/whitelist");
+    async function loadWhitelist(page = whitelistPage) {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(listPageSize)
+      });
+      const data = await api(`/api/admin/whitelist?${params}`);
       whitelistItems = data.items;
+      whitelistPage = data.page;
+      whitelistTotalPages = data.totalPages;
       document.querySelector("#whitelist").innerHTML = data.items.map((item) => `
         <div class="row">
           <div>
@@ -111,13 +127,16 @@
           ${item.status === "unused" ? `<div class="actions"><button class="secondary" data-copy-white="${item.id}">复制</button><button class="danger" data-disable-white="${item.id}">禁用</button></div>` : ""}
         </div>
       `).join("") || "<p>暂无白名单</p>";
+      whitelistPageInfo.textContent = `第 ${data.page} / ${data.totalPages} 页，共 ${data.total} 个名单`;
+      prevWhitelistBtn.disabled = data.page <= 1;
+      nextWhitelistBtn.disabled = data.page >= data.totalPages;
     }
 
     async function loadUsers(page = usersPage) {
       const phone = userPhoneSearch.value.trim();
       const params = new URLSearchParams({
         page: String(page),
-        pageSize: String(usersPageSize)
+        pageSize: String(listPageSize)
       });
       if (phone) params.set("phone", phone);
       const data = await api(`/api/admin/users?${params}`);
@@ -157,7 +176,7 @@
         const item = await api("/api/admin/whitelist", { method: "POST", body: JSON.stringify(body) });
         message.textContent = `邀请码：${item.inviteCode}`;
         form.reset();
-        await loadWhitelist();
+        await loadWhitelist(1);
       } catch (error) {
         message.textContent = error.message;
       }
@@ -215,6 +234,8 @@
     });
     prevUsersBtn.addEventListener("click", () => loadUsers(Math.max(1, usersPage - 1)));
     nextUsersBtn.addEventListener("click", () => loadUsers(Math.min(usersTotalPages, usersPage + 1)));
+    prevWhitelistBtn.addEventListener("click", () => loadWhitelist(Math.max(1, whitelistPage - 1)));
+    nextWhitelistBtn.addEventListener("click", () => loadWhitelist(Math.min(whitelistTotalPages, whitelistPage + 1)));
 
     loadWhitelist();
     loadUsers();

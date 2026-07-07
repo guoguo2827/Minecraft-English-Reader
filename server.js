@@ -497,11 +497,18 @@ app.post("/api/quiz/answer", requireAuth, (req, res) => {
 });
 
 app.get("/api/admin/whitelist", requireAdmin, (req, res) => {
+  const pageSize = Math.min(50, positiveInt(req.query.pageSize, 10));
+  const page = positiveInt(req.query.page, 1);
+  const total = db.prepare("SELECT COUNT(*) AS count FROM phone_whitelist").get().count;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const offset = (safePage - 1) * pageSize;
   const rows = db.prepare(`
     SELECT id, phone, note, invite_display AS inviteCode, status, created_at, used_at, disabled_at
     FROM phone_whitelist ORDER BY created_at DESC
-  `).all();
-  return res.json({ items: rows });
+    LIMIT ? OFFSET ?
+  `).all(pageSize, offset);
+  return res.json({ items: rows, page: safePage, pageSize, total, totalPages });
 });
 
 app.post("/api/admin/whitelist", requireAdmin, (req, res) => {
@@ -534,7 +541,7 @@ app.patch("/api/admin/whitelist/:id", requireAdmin, (req, res) => {
 });
 
 app.get("/api/admin/users", requireAdmin, (req, res) => {
-  const pageSize = Math.min(50, positiveInt(req.query.pageSize, 20));
+  const pageSize = Math.min(50, positiveInt(req.query.pageSize, 10));
   const page = positiveInt(req.query.page, 1);
   const phone = normalizePhone(req.query.phone);
   const where = phone ? "WHERE phone LIKE ?" : "";
