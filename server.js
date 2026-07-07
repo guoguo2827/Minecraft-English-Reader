@@ -14,6 +14,7 @@ const dataDir = path.join(rootDir, "data");
 const dbPath = process.env.DATABASE_PATH || path.join(dataDir, "app.db");
 const port = Number(process.env.PORT || 3000);
 const inviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const passwordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
@@ -33,12 +34,25 @@ function randomCode(length = 6) {
   return code;
 }
 
+function randomPassword(length = 10) {
+  let password = "";
+  for (let i = 0; i < length; i += 1) {
+    password += passwordAlphabet[crypto.randomInt(passwordAlphabet.length)];
+  }
+  return password;
+}
+
 function normalizePhone(value) {
   return String(value || "").replace(/[^\d]/g, "");
 }
 
 function isValidPhone(value) {
   return /^1[3-9]\d{9}$/.test(normalizePhone(value));
+}
+
+function positiveInt(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
 }
 
 function normalizeInvite(value) {
@@ -520,12 +534,23 @@ app.patch("/api/admin/whitelist/:id", requireAdmin, (req, res) => {
 });
 
 app.get("/api/admin/users", requireAdmin, (req, res) => {
+  const pageSize = Math.min(50, positiveInt(req.query.pageSize, 20));
+  const page = positiveInt(req.query.page, 1);
+  const phone = normalizePhone(req.query.phone);
+  const where = phone ? "WHERE phone LIKE ?" : "";
+  const values = phone ? [`%${phone}%`] : [];
+  const total = db.prepare(`SELECT COUNT(*) AS count FROM users ${where}`).get(...values).count;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const offset = (safePage - 1) * pageSize;
   const users = db.prepare(`
     SELECT id, username, nickname, phone, role, status, created_at, last_login_at
-    FROM users ORDER BY created_at DESC
-  `).all();
+    FROM users ${where}
+    ORDER BY created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(...values, pageSize, offset);
   const items = users.map((user) => ({ ...user, progress: progressSummary(user.id).totals }));
-  return res.json({ items });
+  return res.json({ items, page: safePage, pageSize, total, totalPages });
 });
 
 app.patch("/api/admin/users/:id", requireAdmin, (req, res) => {
@@ -534,6 +559,16 @@ app.patch("/api/admin/users/:id", requireAdmin, (req, res) => {
   const status = req.body.status === "disabled" ? "disabled" : "active";
   db.prepare("UPDATE users SET status = ? WHERE id = ?").run(status, id);
   return res.json({ ok: true });
+});
+
+app.post("/api/admin/users/:id/reset-password", requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const user = db.prepare("SELECT id, username, role FROM users WHERE id = ?").get(id);
+  if (!user) return res.status(404).json({ error: "用户不存在" });
+  if (user.role === "admin") return res.status(400).json({ error: "不能在这里重置管理员密码" });
+  const password = randomPassword(10);
+  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(bcrypt.hashSync(password, 10), id);
+  return res.json({ ok: true, username: user.username, password });
 });
 
 app.use("/", requirePageAuth, express.static(publicDir, { extensions: ["html"] }));

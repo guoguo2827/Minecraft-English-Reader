@@ -14,6 +14,7 @@
       <form id="loginForm">
         <label>用户名<input name="username" autocomplete="username" required></label>
         <label>密码<input name="password" type="password" autocomplete="current-password" required></label>
+        <label class="check-line"><input name="remember" type="checkbox">记住账号密码</label>
         <button type="submit">登录</button>
       </form>
       <p class="portal-link">第一次使用？<a href="/register">用邀请码注册</a></p>
@@ -24,6 +25,32 @@
   <script>
     const form = document.querySelector("#loginForm");
     const message = document.querySelector("#message");
+    const rememberKey = "minecraft-reader-login";
+
+    function loadRememberedLogin() {
+      let saved = null;
+      try {
+        saved = JSON.parse(localStorage.getItem(rememberKey) || "null");
+      } catch {
+        localStorage.removeItem(rememberKey);
+      }
+      if (!saved) return;
+      form.elements.username.value = saved.username || "";
+      form.elements.password.value = saved.password || "";
+      form.elements.remember.checked = true;
+    }
+
+    function saveRememberedLogin(body) {
+      if (form.elements.remember.checked) {
+        localStorage.setItem(rememberKey, JSON.stringify({
+          username: body.username,
+          password: body.password
+        }));
+      } else {
+        localStorage.removeItem(rememberKey);
+      }
+    }
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       message.textContent = "正在登录...";
@@ -38,8 +65,11 @@
         message.textContent = data.error || "登录失败";
         return;
       }
+      saveRememberedLogin(body);
       location.href = "/";
     });
+
+    loadRememberedLogin();
   </script>
 </body>
 </html>

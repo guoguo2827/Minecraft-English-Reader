@@ -31,7 +31,16 @@
       <div class="list" id="whitelist"></div>
 
       <h2>用户与学习统计</h2>
+      <div class="toolbar">
+        <label>按手机号搜索<input id="userPhoneSearch" inputmode="numeric" autocomplete="off" maxlength="11" placeholder="输入手机号或部分号码"></label>
+        <button class="secondary" id="userSearchBtn" type="button">搜索</button>
+      </div>
       <div class="list" id="users"></div>
+      <div class="pager">
+        <button class="secondary" id="prevUsersBtn" type="button">上一页</button>
+        <span id="usersPageInfo">第 1 页</span>
+        <button class="secondary" id="nextUsersBtn" type="button">下一页</button>
+      </div>
     </section>
   </main>
 
@@ -39,7 +48,16 @@
     const form = document.querySelector("#whitelistForm");
     const phoneInput = form.elements.phone;
     const message = document.querySelector("#message");
+    const userPhoneSearch = document.querySelector("#userPhoneSearch");
+    const userSearchBtn = document.querySelector("#userSearchBtn");
+    const prevUsersBtn = document.querySelector("#prevUsersBtn");
+    const nextUsersBtn = document.querySelector("#nextUsersBtn");
+    const usersPageInfo = document.querySelector("#usersPageInfo");
     let whitelistItems = [];
+    let userItems = [];
+    let usersPage = 1;
+    let usersTotalPages = 1;
+    const usersPageSize = 20;
 
     async function api(url, options = {}) {
       const response = await fetch(url, {
@@ -95,17 +113,34 @@
       `).join("") || "<p>暂无白名单</p>";
     }
 
-    async function loadUsers() {
-      const data = await api("/api/admin/users");
+    async function loadUsers(page = usersPage) {
+      const phone = userPhoneSearch.value.trim();
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(usersPageSize)
+      });
+      if (phone) params.set("phone", phone);
+      const data = await api(`/api/admin/users?${params}`);
+      userItems = data.items;
+      usersPage = data.page;
+      usersTotalPages = data.totalPages;
       document.querySelector("#users").innerHTML = data.items.map((user) => `
         <div class="row">
           <div>
             <strong>${user.nickname} (${user.username})</strong>
             <div class="muted">${user.phone || "无手机号"} · ${user.role} · ${user.status} · 掌握 ${user.progress.masteredWords}/${user.progress.totalWords} · 错题 ${user.progress.reviewCount}</div>
           </div>
-          ${user.role !== "admin" ? `<button class="${user.status === "active" ? "danger" : "secondary"}" data-user="${user.id}" data-status="${user.status === "active" ? "disabled" : "active"}">${user.status === "active" ? "禁用" : "启用"}</button>` : ""}
+          ${user.role !== "admin" ? `
+            <div class="actions">
+              <button class="secondary" data-reset-user="${user.id}">重置密码</button>
+              <button class="${user.status === "active" ? "danger" : "secondary"}" data-user="${user.id}" data-status="${user.status === "active" ? "disabled" : "active"}">${user.status === "active" ? "禁用" : "启用"}</button>
+            </div>
+          ` : ""}
         </div>
       `).join("") || "<p>暂无用户</p>";
+      usersPageInfo.textContent = `第 ${data.page} / ${data.totalPages} 页，共 ${data.total} 个用户`;
+      prevUsersBtn.disabled = data.page <= 1;
+      nextUsersBtn.disabled = data.page >= data.totalPages;
     }
 
     form.addEventListener("submit", async (event) => {
@@ -136,6 +171,7 @@
       const copyButton = event.target.closest("[data-copy-white]");
       const whiteButton = event.target.closest("[data-disable-white]");
       const userButton = event.target.closest("[data-user]");
+      const resetButton = event.target.closest("[data-reset-user]");
       try {
         if (copyButton) {
           const item = whitelistItems.find((entry) => String(entry.id) === copyButton.dataset.copyWhite);
@@ -155,10 +191,30 @@
           await api(`/api/admin/users/${userButton.dataset.user}`, { method: "PATCH", body: JSON.stringify({ status: userButton.dataset.status }) });
           await loadUsers();
         }
+        if (resetButton) {
+          const user = userItems.find((item) => String(item.id) === resetButton.dataset.resetUser);
+          if (!confirm(`确定重置 ${user?.username || "该用户"} 的密码吗？`)) return;
+          const data = await api(`/api/admin/users/${resetButton.dataset.resetUser}/reset-password`, { method: "POST", body: "{}" });
+          await copyText(`账号：${data.username}\n新密码：${data.password}`);
+          message.textContent = `已重置 ${data.username} 的密码，新密码已复制`;
+        }
       } catch (error) {
         message.textContent = error.message;
       }
     });
+
+    userPhoneSearch.addEventListener("input", () => {
+      userPhoneSearch.value = userPhoneSearch.value.replace(/\D/g, "").slice(0, 11);
+    });
+    userSearchBtn.addEventListener("click", () => loadUsers(1));
+    userPhoneSearch.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        loadUsers(1);
+      }
+    });
+    prevUsersBtn.addEventListener("click", () => loadUsers(Math.max(1, usersPage - 1)));
+    nextUsersBtn.addEventListener("click", () => loadUsers(Math.min(usersTotalPages, usersPage + 1)));
 
     loadWhitelist();
     loadUsers();
