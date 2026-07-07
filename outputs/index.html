@@ -973,6 +973,7 @@
     let voiceUnlocked = false;
     let fallbackAudio = null;
     let nextFallbackAudio = null;
+    let ttsAudio = null;
     let studyMode = "learn";
 
     const els = {
@@ -1106,7 +1107,29 @@
       playNext();
     }
 
-    function speak(text, options = {}) {
+    function playTencentTts(text) {
+      if (!ttsAudio) {
+        ttsAudio = new Audio();
+        ttsAudio.preload = "auto";
+      }
+      ttsAudio.pause();
+      ttsAudio.currentTime = 0;
+      ttsAudio.src = `/api/tts?text=${encodeURIComponent(text)}`;
+      els.voiceStatus.textContent = "腾讯云语音";
+      return ttsAudio.play()
+        .then(() => {
+          voiceUnlocked = true;
+          els.voiceStatus.textContent = "语音已开启";
+          return true;
+        })
+        .catch(() => false);
+    }
+
+    async function speak(text, options = {}) {
+      if (!options.browserOnly) {
+        const played = await playTencentTts(text);
+        if (played) return;
+      }
       if (options.onlineOnly) {
         playFallbackAudio(text);
         return;

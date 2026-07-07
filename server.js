@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const fs = require("fs");
+const https = require("https");
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
@@ -11,12 +12,14 @@ const app = express();
 const rootDir = __dirname;
 const publicDir = path.join(rootDir, "outputs");
 const dataDir = path.join(rootDir, "data");
+const audioDir = path.join(dataDir, "audio");
 const dbPath = process.env.DATABASE_PATH || path.join(dataDir, "app.db");
 const port = Number(process.env.PORT || 3000);
 const inviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const passwordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+fs.mkdirSync(audioDir, { recursive: true });
 
 const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
@@ -61,6 +64,126 @@ function normalizeInvite(value) {
 
 function hashInvite(code) {
   return crypto.createHash("sha256").update(normalizeInvite(code)).digest("hex");
+}
+
+function sha256(value, encoding = "hex") {
+  return crypto.createHash("sha256").update(value).digest(encoding);
+}
+
+function hmacSha256(key, value, encoding) {
+  return crypto.createHmac("sha256", key).update(value).digest(encoding);
+}
+
+function safeAudioName(text) {
+  const normalized = String(text || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return sha256(normalized).slice(0, 32);
+}
+
+function getTencentVoiceType() {
+  const raw = process.env.TENCENT_TTS_VOICE_TYPE || process.env.TENCENT_TTS_VOICE_NAME || "";
+  if (/^-?\d+$/.test(String(raw).trim())) return Number(raw);
+  return undefined;
+}
+
+function tencentTtsRequest(payload) {
+  const secretId = process.env.TENCENT_SECRET_ID;
+  const secretKey = process.env.TENCENT_SECRET_KEY;
+  const region = process.env.TENCENT_TTS_REGION || "ap-guangzhou";
+  if (!secretId || !secretKey) throw new Error("Tencent TTS credentials are not configured");
+
+  const service = "tts";
+  const host = "tts.tencentcloudapi.com";
+  const action = "TextToVoice";
+  const version = "2019-08-23";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const date = new Date(timestamp * 1000).toISOString().slice(0, 10);
+  const body = JSON.stringify(payload);
+  const hashedPayload = sha256(body);
+  const canonicalHeaders = `content-type:application/json; charset=utf-8\nhost:${host}\nx-tc-action:${action.toLowerCase()}\n`;
+  const signedHeaders = "content-type;host;x-tc-action";
+  const canonicalRequest = [
+    "POST",
+    "/",
+    "",
+    canonicalHeaders,
+    signedHeaders,
+    hashedPayload
+  ].join("\n");
+  const credentialScope = `${date}/${service}/tc3_request`;
+  const stringToSign = [
+    "TC3-HMAC-SHA256",
+    timestamp,
+    credentialScope,
+    sha256(canonicalRequest)
+  ].join("\n");
+  const secretDate = hmacSha256(`TC3${secretKey}`, date);
+  const secretService = hmacSha256(secretDate, service);
+  const secretSigning = hmacSha256(secretService, "tc3_request");
+  const signature = hmacSha256(secretSigning, stringToSign, "hex");
+  const authorization = `TC3-HMAC-SHA256 Credential=${secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      method: "POST",
+      host,
+      path: "/",
+      headers: {
+        Authorization: authorization,
+        "Content-Type": "application/json; charset=utf-8",
+        Host: host,
+        "X-TC-Action": action,
+        "X-TC-Version": version,
+        "X-TC-Timestamp": String(timestamp),
+        "X-TC-Region": region
+      }
+    }, (response) => {
+      let data = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { data += chunk; });
+      response.on("end", () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.Response?.Error) {
+            reject(new Error(json.Response.Error.Message || json.Response.Error.Code));
+            return;
+          }
+          resolve(json.Response);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    request.on("error", reject);
+    request.write(body);
+    request.end();
+  });
+}
+
+async function ensureTtsAudio(text) {
+  const normalizedText = String(text || "").trim().replace(/\s+/g, " ");
+  if (!normalizedText || normalizedText.length > 80) throw new Error("Invalid TTS text");
+  const codec = (process.env.TENCENT_TTS_CODEC || "mp3").toLowerCase();
+  const ext = codec === "wav" ? "wav" : "mp3";
+  const filePath = path.join(audioDir, `${safeAudioName(normalizedText)}.${ext}`);
+  if (fs.existsSync(filePath)) return { filePath, contentType: ext === "wav" ? "audio/wav" : "audio/mpeg" };
+
+  const payload = {
+    Text: normalizedText,
+    SessionId: crypto.randomUUID(),
+    Codec: ext,
+    ModelType: 1,
+    Speed: 0,
+    Volume: 0,
+    PrimaryLanguage: 2,
+    SampleRate: 16000
+  };
+  const voiceType = getTencentVoiceType();
+  if (voiceType !== undefined) payload.VoiceType = voiceType;
+
+  const response = await tencentTtsRequest(payload);
+  if (!response?.Audio) throw new Error("Tencent TTS returned no audio");
+  fs.writeFileSync(filePath, Buffer.from(response.Audio, "base64"));
+  return { filePath, contentType: ext === "wav" ? "audio/wav" : "audio/mpeg" };
 }
 
 function initDb() {
@@ -478,6 +601,18 @@ app.post("/api/progress/word", requireAuth, (req, res) => {
   if (!themeMap.get(themeId)) return res.status(400).json({ error: "未知主题" });
   upsertReadProgress(req.user.id, themeId, word);
   return res.json({ ok: true });
+});
+
+app.get("/api/tts", requireAuth, async (req, res) => {
+  try {
+    const text = String(req.query.text || "");
+    const audio = await ensureTtsAudio(text);
+    res.setHeader("Content-Type", audio.contentType);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    return res.sendFile(audio.filePath);
+  } catch (error) {
+    return res.status(503).json({ error: "腾讯云 TTS 暂不可用", detail: error.message });
+  }
 });
 
 app.post("/api/quiz/next", requireAuth, (req, res) => {
