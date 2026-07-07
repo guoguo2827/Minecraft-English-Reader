@@ -2037,15 +2037,31 @@
       return array.map((value) => ({ value, sort: Math.random() })).sort((a, b) => a.sort - b.sort).map(({ value }) => value);
     }
 
+    function makeQuizOptions(theme, item) {
+      const wrongItems = shuffle(theme.items.filter((candidate) => candidate.cn !== item.cn)).slice(0, 3);
+      return shuffle([item, ...wrongItems]).map((candidate) => candidate.cn);
+    }
+
+    function makeLocalQuiz(theme) {
+      const item = theme.items[Math.floor(Math.random() * theme.items.length)] || theme.items[0];
+      return {
+        word: item.word,
+        options: makeQuizOptions(theme, item),
+        localOnly: true
+      };
+    }
+
     async function newQuiz() {
       const theme = themes[currentThemeIndex];
-      const data = await api("/api/quiz/next", {
+      let data = await api("/api/quiz/next", {
         method: "POST",
         body: JSON.stringify({ themeId: theme.id })
       }).catch(() => null);
-      if (!data) return;
+      if (!data?.word) data = makeLocalQuiz(theme);
       quizItem = theme.items.find((item) => item.word === data.word) || theme.items[0];
-      const options = data.options || shuffle([quizItem, ...shuffle(theme.items.filter((item) => item.cn !== quizItem.cn)).slice(0, 3)]).map((item) => item.cn);
+      const options = Array.isArray(data.options) && data.options.length
+        ? data.options
+        : makeQuizOptions(theme, quizItem);
       els.quizWord.textContent = quizItem.word;
       els.feedback.textContent = "";
       els.answers.innerHTML = options.map((cn) => `
@@ -2056,10 +2072,19 @@
         button.addEventListener("click", async () => {
           if (answered) return;
           answered = true;
-          const result = await api("/api/quiz/answer", {
-            method: "POST",
-            body: JSON.stringify({ themeId: theme.id, word: quizItem.word, selectedCn: button.dataset.cn })
-          }).catch((error) => ({ error: error.message }));
+          let result = data.localOnly
+            ? null
+            : await api("/api/quiz/answer", {
+              method: "POST",
+              body: JSON.stringify({ themeId: theme.id, word: quizItem.word, selectedCn: button.dataset.cn })
+            }).catch(() => null);
+          if (!result) {
+            result = {
+              correct: button.dataset.cn === quizItem.cn,
+              correctCn: quizItem.cn,
+              localOnly: true
+            };
+          }
           if (result?.error) {
             answered = false;
             els.feedback.textContent = result.error;
