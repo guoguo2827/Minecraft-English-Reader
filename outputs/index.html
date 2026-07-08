@@ -201,9 +201,8 @@
     }
 
     .hero {
-      position: sticky;
-      top: 0;
-      z-index: 6;
+      position: relative;
+      z-index: 2;
       display: grid;
       grid-column: 1;
       grid-row: 1;
@@ -702,6 +701,8 @@
     }
 
     .quiz {
+      position: relative;
+      z-index: 5;
       display: grid;
       align-self: stretch;
       grid-column: 1;
@@ -717,8 +718,8 @@
       border: 4px solid #355d2e;
       border-radius: 8px;
       background: #edfbdc;
-      box-shadow: inset 0 -6px 0 rgba(63, 105, 42, .14), 0 -8px 18px rgba(54, 83, 35, .14);
-      scroll-margin-top: 118px;
+      box-shadow: inset 0 -6px 0 rgba(63, 105, 42, .14), 0 10px 22px rgba(54, 83, 35, .18);
+      scroll-margin-top: 12px;
     }
 
     .quiz-top {
@@ -726,6 +727,14 @@
       grid-template-columns: 1fr auto auto;
       gap: 12px;
       align-items: center;
+    }
+
+    .quiz-label {
+      display: inline-block;
+      margin-bottom: 2px;
+      color: #5b7c33;
+      font-size: 15px;
+      font-weight: 1000;
     }
 
     .rotate-tip {
@@ -1109,7 +1118,10 @@
 
         <section class="quiz" id="quiz">
           <div class="quiz-top">
-            <h2 class="quiz-word" id="quizWord"></h2>
+            <div>
+              <span class="quiz-label">答题区</span>
+              <h2 class="quiz-word" id="quizWord"></h2>
+            </div>
             <button class="big-action secondary" id="speakQuizBtn" type="button">读题</button>
             <button class="big-action secondary" id="quizBtn" type="button">下一题</button>
           </div>
@@ -1759,7 +1771,7 @@
       document.body.dataset.studyMode = studyMode;
       requestAnimationFrame(() => {
         const target = studyMode === "quiz" ? els.quiz : els.cards;
-        target?.scrollIntoView({ behavior: "smooth", block: "start" });
+        setTimeout(() => target?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
       });
     }
 
