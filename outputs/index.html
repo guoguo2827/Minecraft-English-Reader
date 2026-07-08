@@ -122,7 +122,7 @@
 
     main {
       display: grid;
-      grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
+      grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
       gap: 12px;
       width: min(1500px, 100%);
       margin: 0 auto;
@@ -192,13 +192,18 @@
     .workspace {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: auto minmax(0, 1fr) auto auto;
+      grid-template-rows: auto auto auto auto;
       gap: 12px;
       min-height: 0;
-      overflow: hidden;
+      overflow-y: auto;
+      padding-right: 4px;
+      scroll-behavior: smooth;
     }
 
     .hero {
+      position: sticky;
+      top: 0;
+      z-index: 6;
       display: grid;
       grid-column: 1;
       grid-row: 1;
@@ -563,8 +568,6 @@
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
       min-height: 0;
-      overflow-y: auto;
-      padding-right: 4px;
       align-content: start;
     }
 
@@ -649,10 +652,21 @@
       box-shadow: inset 0 -4px 0 rgba(0,0,0,.18);
     }
 
-    body[data-study-mode="learn"] .quiz,
     body[data-study-mode="quiz"] .cards {
       filter: blur(5px) grayscale(.25);
       opacity: .48;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    body[data-study-mode="learn"] .quiz {
+      max-height: 0;
+      min-height: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      border-width: 0;
+      opacity: 0;
+      overflow: hidden;
       pointer-events: none;
       user-select: none;
     }
@@ -697,6 +711,7 @@
       gap: 10px;
       min-width: 0;
       min-height: 178px;
+      max-height: 420px;
       padding: 12px;
       border: 4px solid #355d2e;
       border-radius: 8px;
@@ -763,7 +778,7 @@
     @media (max-width: 1100px) {
       .workspace {
         grid-template-columns: 1fr;
-        grid-template-rows: auto minmax(0, 1fr) auto auto;
+        grid-template-rows: auto auto auto auto;
       }
 
       .learning-panel {
@@ -830,7 +845,7 @@
       }
 
       main {
-        grid-template-columns: 180px minmax(0, 1fr);
+        grid-template-columns: 118px minmax(0, 1fr);
         min-height: auto;
         padding: 8px;
         gap: 8px;
@@ -842,14 +857,15 @@
       }
 
       .theme-tab {
-        grid-template-columns: 34px 1fr;
-        gap: 6px;
-        padding: 7px;
+        grid-template-columns: 30px 1fr;
+        gap: 5px;
+        padding: 6px;
+        border-width: 2px;
       }
 
       .workspace {
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: auto minmax(0, 1fr) auto;
+        grid-template-rows: auto auto auto;
         gap: 8px;
       }
 
@@ -866,27 +882,29 @@
       }
 
       .word-card {
-        min-height: 150px;
+        min-height: 176px;
       }
 
       .thumb {
-        min-height: 82px;
+        height: 104px;
+        min-height: 0;
+        aspect-ratio: auto;
       }
 
       .word-meta {
-        padding: 8px;
+        padding: 7px;
       }
 
       .word-meta b {
-        font-size: 16px;
-      }
-
-      .word-meta span {
         font-size: 17px;
       }
 
+      .word-meta span {
+        font-size: 18px;
+      }
+
       .learning-panel {
-        grid-template-columns: minmax(130px, .75fr) minmax(180px, .8fr) minmax(310px, 1.45fr);
+        grid-template-columns: minmax(130px, .7fr) minmax(170px, .72fr) minmax(340px, 1.65fr);
         padding: 8px;
         gap: 7px;
       }
@@ -900,25 +918,25 @@
       }
 
       .reward-board {
-        grid-template-columns: minmax(160px, 1fr) 96px minmax(170px, .9fr);
-        min-height: 86px;
-        gap: 7px;
-        padding: 8px;
+        grid-template-columns: minmax(170px, 1.05fr) minmax(110px, .72fr) minmax(190px, .95fr);
+        min-height: 78px;
+        gap: 6px;
+        padding: 6px;
       }
 
       .reward-head {
-        grid-template-columns: 68px 1fr;
-        gap: 8px;
+        grid-template-columns: 58px 1fr;
+        gap: 7px;
       }
 
       .gem-stage {
-        width: 68px;
-        height: 68px;
+        width: 58px;
+        height: 58px;
       }
 
       .gem-stage svg {
-        width: 52px;
-        height: 52px;
+        width: 45px;
+        height: 45px;
       }
 
       .reward-title {
@@ -930,11 +948,15 @@
       }
 
       .reward-stat {
-        padding: 6px;
+        padding: 4px;
       }
 
       .reward-stat strong {
-        font-size: 18px;
+        font-size: 16px;
+      }
+
+      .reward-stat span {
+        font-size: 10px;
       }
 
       .quiz {
@@ -1688,6 +1710,10 @@
     function setStudyMode(mode) {
       studyMode = mode === "quiz" ? "quiz" : "learn";
       document.body.dataset.studyMode = studyMode;
+      requestAnimationFrame(() => {
+        const target = studyMode === "quiz" ? els.quiz : els.cards;
+        target?.scrollIntoView({ behavior: "smooth", block: studyMode === "quiz" ? "end" : "start" });
+      });
     }
 
     function gemSvg(theme) {
