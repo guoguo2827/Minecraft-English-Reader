@@ -84,9 +84,10 @@ function hmacSha256(key, value, encoding) {
   return crypto.createHmac("sha256", key).update(value).digest(encoding);
 }
 
-function safeAudioName(text) {
+function safeAudioName(text, voiceType, codec) {
   const normalized = String(text || "").trim().toLowerCase().replace(/\s+/g, " ");
-  return sha256(normalized).slice(0, 32);
+  const voiceKey = voiceType === undefined ? "default" : String(voiceType);
+  return sha256(`${normalized}|voice:${voiceKey}|codec:${codec}`).slice(0, 32);
 }
 
 function getTencentVoiceType() {
@@ -174,7 +175,8 @@ async function ensureTtsAudio(text) {
   if (!normalizedText || normalizedText.length > 80) throw new Error("Invalid TTS text");
   const codec = (process.env.TENCENT_TTS_CODEC || "mp3").toLowerCase();
   const ext = codec === "wav" ? "wav" : "mp3";
-  const filePath = path.join(audioDir, `${safeAudioName(normalizedText)}.${ext}`);
+  const voiceType = getTencentVoiceType();
+  const filePath = path.join(audioDir, `${safeAudioName(normalizedText, voiceType, ext)}.${ext}`);
   if (fs.existsSync(filePath)) return { filePath, contentType: ext === "wav" ? "audio/wav" : "audio/mpeg" };
 
   const payload = {
@@ -187,7 +189,6 @@ async function ensureTtsAudio(text) {
     PrimaryLanguage: 2,
     SampleRate: 16000
   };
-  const voiceType = getTencentVoiceType();
   if (voiceType !== undefined) payload.VoiceType = voiceType;
 
   const response = await tencentTtsRequest(payload);
