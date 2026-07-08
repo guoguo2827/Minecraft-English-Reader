@@ -36,9 +36,10 @@
     }
 
     .app {
-      min-height: 100vh;
+      height: 100vh;
       display: grid;
       grid-template-rows: auto 1fr;
+      overflow: hidden;
     }
 
     .topbar {
@@ -126,16 +127,15 @@
       width: min(1500px, 100%);
       margin: 0 auto;
       padding: 12px;
-      min-height: calc(100vh - 86px);
+      min-height: 0;
+      overflow: hidden;
     }
 
     .sidebar {
       align-self: start;
-      position: sticky;
-      top: 82px;
       display: grid;
       gap: 10px;
-      max-height: calc(100vh - 104px);
+      max-height: 100%;
       overflow: auto;
       padding-right: 4px;
     }
@@ -191,16 +191,17 @@
 
     .workspace {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(310px, 360px);
-      grid-template-rows: auto auto 1fr;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto auto;
       gap: 12px;
       min-height: 0;
+      overflow: hidden;
     }
 
     .hero {
       display: grid;
-      grid-column: 2;
-      grid-row: 2;
+      grid-column: 1;
+      grid-row: 1;
       grid-template-columns: 1fr;
       gap: 12px;
       align-items: stretch;
@@ -226,10 +227,10 @@
 
     .learning-panel {
       display: grid;
-      grid-template-columns: 1fr;
-      align-items: stretch;
+      grid-template-columns: minmax(190px, .9fr) minmax(260px, .85fr) minmax(430px, 1.65fr);
+      align-items: center;
       gap: 10px;
-      padding: 12px;
+      padding: 10px;
       border: 4px solid #704c25;
       border-radius: 8px;
       background: var(--paper);
@@ -238,7 +239,7 @@
 
     .theme-heading h2 {
       margin: 0;
-      font-size: clamp(22px, 2.5vw, 34px);
+      font-size: clamp(20px, 2.1vw, 30px);
       color: var(--leaf-dark);
       letter-spacing: 0;
     }
@@ -252,10 +253,12 @@
     .reward-board {
       position: relative;
       display: grid;
-      gap: 10px;
-      min-height: 246px;
+      grid-template-columns: minmax(210px, 1.1fr) minmax(130px, .75fr) minmax(230px, 1fr);
+      gap: 8px;
+      align-items: center;
+      min-height: 96px;
       overflow: hidden;
-      padding: 12px;
+      padding: 8px;
       border: 4px solid #2a1a0c;
       border-radius: 8px;
       background:
@@ -269,8 +272,8 @@
     .reward-board::before {
       content: "";
       position: absolute;
-      inset: -34% -20% auto;
-      height: 150px;
+      inset: -70% -12% auto;
+      height: 120px;
       opacity: .28;
       background: radial-gradient(circle, var(--gem-glow, #54f0d8), transparent 68%);
       transform: translateY(-16px);
@@ -281,17 +284,18 @@
       position: relative;
       z-index: 1;
       display: grid;
-      grid-template-columns: 96px 1fr;
-      gap: 12px;
+      grid-template-columns: 70px 1fr;
+      gap: 10px;
       align-items: center;
+      min-width: 0;
     }
 
     .gem-stage {
       position: relative;
       display: grid;
       place-items: center;
-      width: 96px;
-      height: 96px;
+      width: 70px;
+      height: 70px;
       border: 4px solid rgba(255,255,255,.28);
       border-radius: 8px;
       background: rgba(0,0,0,.2);
@@ -299,8 +303,8 @@
     }
 
     .gem-stage svg {
-      width: 74px;
-      height: 74px;
+      width: 54px;
+      height: 54px;
       image-rendering: pixelated;
       filter: drop-shadow(0 8px 0 rgba(0,0,0,.22));
       animation: gem-idle 2.8s ease-in-out infinite;
@@ -327,7 +331,7 @@
 
     .reward-title {
       margin: 2px 0;
-      font-size: clamp(24px, 2.4vw, 34px);
+      font-size: clamp(19px, 1.7vw, 25px);
       line-height: 1;
       font-weight: 1000;
       overflow-wrap: anywhere;
@@ -342,7 +346,7 @@
     .reward-bar {
       position: relative;
       z-index: 1;
-      height: 20px;
+      height: 18px;
       overflow: hidden;
       border: 3px solid rgba(255,255,255,.32);
       border-radius: 8px;
@@ -364,12 +368,13 @@
       z-index: 1;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
+      gap: 6px;
+      min-width: 0;
     }
 
     .reward-stat {
       min-width: 0;
-      padding: 8px;
+      padding: 6px;
       border: 2px solid rgba(255,255,255,.22);
       border-radius: 8px;
       background: rgba(255,255,255,.1);
@@ -380,7 +385,7 @@
     .reward-stat strong {
       display: block;
       color: #fff;
-      font-size: 22px;
+      font-size: 18px;
       line-height: 1;
     }
 
@@ -388,13 +393,13 @@
       display: block;
       margin-top: 4px;
       color: #cce8bd;
-      font-size: 12px;
+      font-size: 11px;
     }
 
     .reward-toast {
       position: absolute;
       right: 12px;
-      bottom: 12px;
+      bottom: 8px;
       z-index: 3;
       max-width: calc(100% - 24px);
       padding: 8px 10px;
@@ -554,15 +559,18 @@
     .cards {
       display: grid;
       grid-column: 1;
-      grid-row: 2 / span 2;
+      grid-row: 2;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
       min-height: 0;
+      overflow-y: auto;
+      padding-right: 4px;
+      align-content: start;
     }
 
     .word-card {
       min-width: 0;
-      min-height: 220px;
+      min-height: 205px;
       display: grid;
       grid-template-rows: 1fr auto;
       overflow: hidden;
@@ -615,12 +623,10 @@
     }
 
     .mode-switch {
-      grid-column: 1 / -1;
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 6px;
-      width: min(520px, 100%);
-      justify-self: center;
+      width: 100%;
       padding: 6px;
       border: 4px solid #6b4a23;
       border-radius: 8px;
@@ -628,7 +634,7 @@
     }
 
     .mode-switch button {
-      min-height: 44px;
+      min-height: 40px;
       border: 0;
       border-radius: 6px;
       background: transparent;
@@ -685,12 +691,12 @@
     .quiz {
       display: grid;
       align-self: stretch;
-      grid-column: 2;
+      grid-column: 1;
       grid-row: 3;
-      grid-template-rows: auto auto 1fr;
+      grid-template-rows: auto auto auto;
       gap: 10px;
       min-width: 0;
-      min-height: 300px;
+      min-height: 178px;
       padding: 12px;
       border: 4px solid #355d2e;
       border-radius: 8px;
@@ -717,7 +723,7 @@
 
     .answers {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 10px;
       min-height: 0;
     }
@@ -748,7 +754,7 @@
     }
 
     .feedback {
-      min-height: 30px;
+      min-height: 26px;
       font-size: 20px;
       font-weight: 900;
       color: #6a3e13;
@@ -757,22 +763,15 @@
     @media (max-width: 1100px) {
       .workspace {
         grid-template-columns: 1fr;
-        grid-template-rows: auto auto auto auto;
-      }
-
-      .hero,
-      .cards,
-      .quiz {
-        grid-column: 1;
-        grid-row: auto;
-      }
-
-      .quiz {
-        min-height: 260px;
+        grid-template-rows: auto minmax(0, 1fr) auto auto;
       }
 
       .learning-panel {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(160px, .8fr) minmax(220px, .85fr) minmax(360px, 1.4fr);
+      }
+
+      .reward-board {
+        grid-template-columns: minmax(190px, 1fr) minmax(120px, .65fr) minmax(210px, 1fr);
       }
 
       .answers {
@@ -785,13 +784,16 @@
         grid-template-columns: 1fr;
       }
 
-      .hero {
-        grid-template-columns: 1fr;
+      .learning-panel {
+        grid-template-columns: 1fr 1fr;
       }
 
-      .cards,
-      .answers {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+      .reward-board {
+        grid-column: 1 / -1;
+      }
+
+      .cards {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }
 
@@ -801,9 +803,12 @@
       }
 
       .cards,
-      .answers,
       .panel-actions {
         grid-template-columns: 1fr;
+      }
+
+      .answers {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
     }
@@ -828,11 +833,12 @@
         grid-template-columns: 180px minmax(0, 1fr);
         min-height: auto;
         padding: 8px;
+        gap: 8px;
       }
 
       .sidebar {
         position: static;
-        max-height: calc(100vh - 76px);
+        max-height: 100%;
       }
 
       .theme-tab {
@@ -842,19 +848,19 @@
       }
 
       .workspace {
-        grid-template-columns: minmax(0, 1fr) minmax(250px, 300px);
-        grid-template-rows: auto auto 1fr;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr) auto;
         gap: 8px;
       }
 
       .hero {
-        grid-column: 2;
-        grid-row: 2;
+        grid-column: 1;
+        grid-row: 1;
       }
 
       .cards {
         grid-column: 1;
-        grid-row: 2 / span 2;
+        grid-row: 2;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 8px;
       }
@@ -880,6 +886,7 @@
       }
 
       .learning-panel {
+        grid-template-columns: minmax(130px, .75fr) minmax(180px, .8fr) minmax(310px, 1.45fr);
         padding: 8px;
         gap: 7px;
       }
@@ -893,7 +900,8 @@
       }
 
       .reward-board {
-        min-height: 150px;
+        grid-template-columns: minmax(160px, 1fr) 96px minmax(170px, .9fr);
+        min-height: 86px;
         gap: 7px;
         padding: 8px;
       }
@@ -930,19 +938,24 @@
       }
 
       .quiz {
-        grid-column: 2;
+        grid-column: 1;
         grid-row: 3;
-        min-height: 190px;
+        min-height: 150px;
         padding: 8px;
       }
 
+      .quiz-top {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+      }
+
       .quiz-word {
-        font-size: 28px;
+        font-size: 26px;
       }
 
       .answer {
-        min-height: 42px;
-        font-size: 17px;
+        min-height: 40px;
+        font-size: 16px;
       }
     }
 
@@ -993,16 +1006,15 @@
       <nav class="sidebar" id="themeTabs" aria-label="主题"></nav>
 
       <section class="workspace">
-        <div class="mode-switch" aria-label="学习模式切换">
-          <button type="button" data-mode-button="learn">学习模式</button>
-          <button type="button" data-mode-button="quiz">答题模式</button>
-        </div>
-
         <section class="hero">
           <aside class="learning-panel">
             <div class="theme-heading">
               <h2 id="themeTitle"></h2>
               <p id="themeSubtitle"></p>
+            </div>
+            <div class="mode-switch" aria-label="学习模式切换">
+              <button type="button" data-mode-button="learn">学习模式</button>
+              <button type="button" data-mode-button="quiz">答题模式</button>
             </div>
             <div class="reward-board" id="rewardPanel" data-gem="coal">
               <div class="reward-head">
