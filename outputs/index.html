@@ -575,7 +575,7 @@
       min-width: 0;
       min-height: 205px;
       display: grid;
-      grid-template-rows: 1fr auto;
+      grid-template-rows: minmax(132px, 1fr) auto;
       overflow: hidden;
       border: 4px solid #6a4a28;
       border-radius: 8px;
@@ -602,27 +602,34 @@
     }
 
     .thumb {
+      position: relative;
       min-height: 0;
       aspect-ratio: 1 / 1;
       background: #e9f4dc;
       display: grid;
       place-items: center;
       border-bottom: 3px solid #d2c09b;
+      overflow: hidden;
     }
 
     .thumb canvas {
       width: 100%;
-      height: 100%;
-      object-fit: cover;
+      height: calc(100% + 34px);
+      margin-bottom: -34px;
+      object-fit: contain;
       display: block;
     }
 
     .word-meta {
+      position: relative;
+      z-index: 2;
       display: grid;
       gap: 4px;
       padding: 12px;
       text-align: center;
       min-width: 0;
+      background: linear-gradient(180deg, #fffdf5, #f8f2df);
+      border-top: 3px solid #d2c09b;
     }
 
     .mode-switch {
@@ -699,6 +706,7 @@
     .word-meta span {
       color: #207026;
       font-size: 22px;
+      line-height: 1.05;
       font-weight: 900;
     }
 
@@ -882,17 +890,20 @@
       }
 
       .word-card {
-        min-height: 176px;
+        min-height: 192px;
+        grid-template-rows: 118px auto;
       }
 
       .thumb {
-        height: 104px;
+        height: 118px;
         min-height: 0;
         aspect-ratio: auto;
       }
 
       .word-meta {
-        padding: 7px;
+        min-height: 70px;
+        padding: 7px 6px 8px;
+        align-content: center;
       }
 
       .word-meta b {
