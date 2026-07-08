@@ -192,7 +192,7 @@
     .workspace {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: auto auto auto;
+      grid-template-rows: auto auto;
       gap: 12px;
       min-height: 0;
       overflow-y: auto;
@@ -201,8 +201,9 @@
     }
 
     .hero {
-      position: relative;
-      z-index: 2;
+      position: sticky;
+      top: 0;
+      z-index: 6;
       display: grid;
       grid-column: 1;
       grid-row: 1;
@@ -562,10 +563,18 @@
 
     .cards {
       display: grid;
-      grid-column: 1;
-      grid-row: 2;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
+      min-height: 0;
+      align-content: start;
+    }
+
+    .card-flow {
+      display: grid;
+      grid-column: 1;
+      grid-row: 2;
+      gap: 12px;
+      min-width: 0;
       min-height: 0;
       align-content: start;
     }
@@ -659,6 +668,13 @@
       box-shadow: inset 0 -4px 0 rgba(0,0,0,.18);
     }
 
+    body[data-study-mode="quiz"] .cards {
+      filter: blur(5px) grayscale(.22);
+      opacity: .46;
+      pointer-events: none;
+      user-select: none;
+    }
+
     body[data-study-mode="learn"] .quiz {
       max-height: 0;
       min-height: 0;
@@ -705,8 +721,7 @@
       z-index: 5;
       display: grid;
       align-self: stretch;
-      grid-column: 1;
-      grid-row: 3;
+      grid-column: 1 / -1;
       grid-template-rows: auto auto auto;
       gap: 10px;
       min-width: 0;
@@ -719,7 +734,7 @@
       border-radius: 8px;
       background: #edfbdc;
       box-shadow: inset 0 -6px 0 rgba(63, 105, 42, .14), 0 10px 22px rgba(54, 83, 35, .18);
-      scroll-margin-top: 12px;
+      scroll-margin-top: 124px;
     }
 
     .quiz-top {
@@ -790,7 +805,7 @@
     @media (max-width: 1100px) {
       .workspace {
         grid-template-columns: 1fr;
-        grid-template-rows: auto auto auto;
+        grid-template-rows: auto auto;
       }
 
       .learning-panel {
@@ -903,7 +918,7 @@
 
       .workspace {
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: auto auto auto;
+        grid-template-rows: auto auto;
         gap: 8px;
       }
 
@@ -913,8 +928,6 @@
       }
 
       .cards {
-        grid-column: 1;
-        grid-row: 2;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 8px;
       }
@@ -1016,8 +1029,7 @@
       }
 
       .quiz {
-        grid-column: 1;
-        grid-row: 3;
+        grid-column: 1 / -1;
         min-height: 150px;
         padding: 8px;
       }
@@ -1114,19 +1126,21 @@
           </aside>
         </section>
 
-        <section class="cards" id="cards"></section>
+        <section class="card-flow" id="cardFlow">
+          <section class="cards" id="cards"></section>
 
-        <section class="quiz" id="quiz">
-          <div class="quiz-top">
-            <div>
-              <span class="quiz-label">答题区</span>
-              <h2 class="quiz-word" id="quizWord"></h2>
+          <section class="quiz" id="quiz">
+            <div class="quiz-top">
+              <div>
+                <span class="quiz-label">答题区</span>
+                <h2 class="quiz-word" id="quizWord"></h2>
+              </div>
+              <button class="big-action secondary" id="speakQuizBtn" type="button">读题</button>
+              <button class="big-action secondary" id="quizBtn" type="button">下一题</button>
             </div>
-            <button class="big-action secondary" id="speakQuizBtn" type="button">读题</button>
-            <button class="big-action secondary" id="quizBtn" type="button">下一题</button>
-          </div>
-          <div class="answers" id="answers"></div>
-          <div class="feedback" id="feedback"></div>
+            <div class="answers" id="answers"></div>
+            <div class="feedback" id="feedback"></div>
+          </section>
         </section>
       </section>
     </main>
