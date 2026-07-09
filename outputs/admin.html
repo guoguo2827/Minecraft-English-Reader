@@ -146,7 +146,7 @@
       document.querySelector("#users").innerHTML = data.items.map((user) => `
         <div class="row">
           <div>
-            <strong>${user.nickname} (${user.username})</strong>
+            <strong>${user.username}</strong>
             <div class="muted">${user.phone || "无手机号"} · ${user.role} · ${user.status} · 掌握 ${user.progress.masteredWords}/${user.progress.totalWords} · 错题 ${user.progress.reviewCount}</div>
           </div>
           ${user.role !== "admin" ? `
