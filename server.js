@@ -812,7 +812,7 @@ app.post("/api/auth/register", (req, res) => {
   const inviteCode = normalizeInvite(req.body.inviteCode);
   const username = String(req.body.username || "").trim();
   const password = String(req.body.password || "");
-  const nickname = String(req.body.nickname || username).trim();
+  const nickname = username;
   if (!isValidPhone(phone) || !inviteCode || !username || password.length < 6) {
     return res.status(400).json({ error: "请填写正确手机号、邀请码、用户名和至少6位密码" });
   }
