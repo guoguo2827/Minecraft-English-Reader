@@ -232,7 +232,7 @@
 
     .learning-panel {
       display: grid;
-      grid-template-columns: minmax(190px, .9fr) minmax(260px, .85fr) minmax(430px, 1.65fr);
+      grid-template-columns: minmax(230px, .72fr) minmax(520px, 2.1fr);
       align-items: center;
       gap: 10px;
       padding: 10px;
@@ -240,6 +240,10 @@
       border-radius: 8px;
       background: var(--paper);
       box-shadow: inset 0 -6px 0 rgba(123, 91, 47, .16);
+    }
+
+    .theme-heading {
+      display: none;
     }
 
     .theme-heading h2 {
@@ -641,6 +645,14 @@
       border-top: 3px solid #d2c09b;
     }
 
+    .study-controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px;
+      align-items: stretch;
+      min-width: 0;
+    }
+
     .mode-switch {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -659,6 +671,26 @@
       background: transparent;
       color: #fff8da;
       font-weight: 900;
+    }
+
+    .cn-toggle {
+      min-height: 60px;
+      padding: 0 12px;
+      border: 4px solid #6b4a23;
+      border-radius: 8px;
+      background: #fff9e8;
+      color: #20330f;
+      font-weight: 1000;
+      white-space: nowrap;
+      box-shadow: inset 0 -4px 0 rgba(0,0,0,.14);
+    }
+
+    body[data-show-cn="false"] .cn-toggle {
+      background: #f5c94d;
+    }
+
+    body[data-show-cn="false"] .word-meta span {
+      visibility: hidden;
     }
 
     body[data-study-mode="learn"] [data-mode-button="learn"],
@@ -809,7 +841,7 @@
       }
 
       .learning-panel {
-        grid-template-columns: minmax(150px, .8fr) minmax(150px, .65fr) minmax(420px, 1.8fr);
+        grid-template-columns: minmax(210px, .65fr) minmax(520px, 2fr);
       }
 
       .reward-board {
@@ -823,7 +855,7 @@
 
     @media (max-width: 1180px) and (orientation: landscape) {
       .learning-panel {
-        grid-template-columns: minmax(130px, .72fr) minmax(126px, .52fr) minmax(430px, 2.2fr);
+        grid-template-columns: minmax(160px, .45fr) minmax(500px, 2.4fr);
       }
 
       .mode-switch {
@@ -836,6 +868,18 @@
         min-height: 34px;
         padding: 4px 3px;
         font-size: 15px;
+      }
+
+      .study-controls {
+        grid-template-columns: minmax(0, 1fr) 76px;
+        gap: 4px;
+      }
+
+      .cn-toggle {
+        min-height: 34px;
+        padding: 4px 3px;
+        border-width: 3px;
+        font-size: 14px;
       }
 
       .reward-board {
@@ -854,6 +898,10 @@
 
       .learning-panel {
         grid-template-columns: 1fr 1fr;
+      }
+
+      .study-controls {
+        grid-template-columns: minmax(0, 1fr) 84px;
       }
 
       .reward-board {
@@ -1028,6 +1076,18 @@
         font-size: 15px;
       }
 
+      .study-controls {
+        grid-template-columns: minmax(0, 1fr) 76px;
+        gap: 4px;
+      }
+
+      .cn-toggle {
+        min-height: 34px;
+        padding: 4px 3px;
+        border-width: 3px;
+        font-size: 14px;
+      }
+
       .quiz {
         grid-column: 1 / -1;
         min-height: 150px;
@@ -1102,9 +1162,12 @@
               <h2 id="themeTitle"></h2>
               <p id="themeSubtitle"></p>
             </div>
-            <div class="mode-switch" aria-label="学习模式切换">
-              <button type="button" data-mode-button="learn">学习模式</button>
-              <button type="button" data-mode-button="quiz">答题模式</button>
+            <div class="study-controls">
+              <div class="mode-switch" aria-label="学习模式切换">
+                <button type="button" data-mode-button="learn">学习模式</button>
+                <button type="button" data-mode-button="quiz">答题模式</button>
+              </div>
+              <button class="cn-toggle" id="cnToggleBtn" type="button" aria-pressed="false">隐藏中文</button>
             </div>
             <div class="reward-board" id="rewardPanel" data-gem="coal">
               <div class="reward-head">
@@ -1720,6 +1783,8 @@
     let ttsAudio = null;
     let studyMode = "learn";
     let rewardState = null;
+    const showCnStorageKey = "minecraft-reader-show-cn";
+    let showCardChinese = localStorage.getItem(showCnStorageKey) !== "false";
     const gemThemes = {
       coal: { main: "#3f4548", dark: "#171a1c", light: "#9ca5a8", glow: "rgba(190,205,210,.55)" },
       iron: { main: "#c9d0d2", dark: "#6f777b", light: "#f6fbff", glow: "rgba(230,242,247,.62)" },
@@ -1754,6 +1819,7 @@
       answers: document.querySelector("#answers"),
       feedback: document.querySelector("#feedback"),
       voiceStatus: document.querySelector("#voiceStatus"),
+      cnToggleBtn: document.querySelector("#cnToggleBtn"),
       modeButtons: document.querySelectorAll("[data-mode-button]")
     };
 
@@ -1787,6 +1853,16 @@
         const target = studyMode === "quiz" ? els.quiz : els.cards;
         setTimeout(() => target?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
       });
+    }
+
+    function setCardChineseVisible(visible) {
+      showCardChinese = Boolean(visible);
+      document.body.dataset.showCn = showCardChinese ? "true" : "false";
+      if (els.cnToggleBtn) {
+        els.cnToggleBtn.textContent = showCardChinese ? "隐藏中文" : "显示中文";
+        els.cnToggleBtn.setAttribute("aria-pressed", String(!showCardChinese));
+      }
+      localStorage.setItem(showCnStorageKey, showCardChinese ? "true" : "false");
     }
 
     function gemSvg(theme) {
@@ -2245,11 +2321,13 @@
     els.modeButtons.forEach((button) => {
       button.addEventListener("click", () => setStudyMode(button.dataset.modeButton));
     });
+    els.cnToggleBtn?.addEventListener("click", () => setCardChineseVisible(!showCardChinese));
     window.speechSynthesis?.addEventListener?.("voiceschanged", pickVoice);
     window.addEventListener("resize", () => renderCards());
 
     initUser();
     initRewards();
+    setCardChineseVisible(showCardChinese);
     setStudyMode("learn");
     pickVoice();
     setTheme(0);
