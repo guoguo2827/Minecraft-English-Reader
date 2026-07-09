@@ -34,7 +34,7 @@
     async function init() {
       const me = await api("/api/me");
       const data = await api("/api/progress");
-      document.querySelector("#userLine").textContent = `${me.user.nickname} · ${me.user.username}`;
+      document.querySelector("#userLine").textContent = me.user.username;
       document.querySelector("#stats").innerHTML = `
         <div class="stat"><strong>${data.totals.studiedWords}</strong>已学习单词</div>
         <div class="stat"><strong>${data.totals.masteredWords}</strong>已掌握单词</div>
