@@ -1796,6 +1796,11 @@
     let rewardState = null;
     const showCnStorageKey = "minecraft-reader-show-cn";
     let showCardChinese = localStorage.getItem(showCnStorageKey) !== "false";
+    const TTS_VERSION = "20260710-501008";
+    const TTS_VOICE_TYPE = "501008";
+    const ttsPreloadCache = new Set();
+    const ttsPreloadQueue = [];
+    let ttsPreloadActive = false;
     const gemThemes = {
       coal: { main: "#3f4548", dark: "#171a1c", light: "#9ca5a8", glow: "rgba(190,205,210,.55)" },
       iron: { main: "#c9d0d2", dark: "#6f777b", light: "#f6fbff", glow: "rgba(230,242,247,.62)" },
@@ -2018,16 +2023,6 @@
     }
 
     function pickVoice() {
-      if (!("speechSynthesis" in window)) {
-        els.voiceStatus.textContent = "无语音支持";
-        return;
-      }
-      const voices = speechSynthesis.getVoices();
-      selectedVoice =
-        voices.find((voice) => voice.lang === "en-US") ||
-        voices.find((voice) => voice.lang && voice.lang.toLowerCase().startsWith("en-us")) ||
-        voices.find((voice) => voice.lang && voice.lang.toLowerCase().startsWith("en")) ||
-        null;
       els.voiceStatus.textContent = voiceUnlocked ? "语音已开启" : "开启语音";
     }
 
@@ -2097,65 +2092,61 @@
       }
       ttsAudio.pause();
       ttsAudio.currentTime = 0;
-      ttsAudio.src = `/api/tts?text=${encodeURIComponent(text)}`;
-      els.voiceStatus.textContent = "腾讯云语音";
+      ttsAudio.src = makeTtsUrl(text);
+      els.voiceStatus.textContent = "语音加载中";
       return ttsAudio.play()
         .then(() => {
           voiceUnlocked = true;
           els.voiceStatus.textContent = "语音已开启";
           return true;
-        })
-        .catch(() => false);
+        });
+    }
+
+    function makeTtsUrl(text) {
+      const params = new URLSearchParams({
+        text,
+        voice: TTS_VOICE_TYPE,
+        v: TTS_VERSION
+      });
+      return `/api/tts?${params.toString()}`;
+    }
+
+    function preloadTts(text) {
+      const normalized = String(text || "").trim().replace(/\s+/g, " ");
+      if (!normalized || ttsPreloadCache.has(normalized)) return;
+      ttsPreloadCache.add(normalized);
+      ttsPreloadQueue.push(normalized);
+      runTtsPreloadQueue();
+    }
+
+    async function runTtsPreloadQueue() {
+      if (ttsPreloadActive) return;
+      ttsPreloadActive = true;
+      while (ttsPreloadQueue.length) {
+        const word = ttsPreloadQueue.shift();
+        try {
+          await fetch(makeTtsUrl(word), { cache: "force-cache" });
+        } catch {}
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      ttsPreloadActive = false;
+    }
+
+    function preloadThemeAudio(theme) {
+      theme.items.forEach((item) => preloadTts(item.word));
     }
 
     async function speak(text, options = {}) {
-      if (!options.browserOnly) {
-        const played = await playTencentTts(text);
-        if (played) return;
-      }
-      if (options.onlineOnly) {
-        playFallbackAudio(text);
-        return;
-      }
-      if (!("speechSynthesis" in window)) {
-        playFallbackAudio(text);
-        return;
-      }
-      pickVoice();
-      speechSynthesis.resume();
-      if (!options.noCancel) {
-        speechSynthesis.cancel();
-      }
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = selectedVoice?.lang || "en-US";
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-      }
-      utterance.rate = 0.82;
-      utterance.pitch = 1.05;
-      utterance.volume = options.quiet ? 0.01 : 1;
-      utterance.onstart = () => {
-        voiceUnlocked = true;
-        els.voiceStatus.textContent = "语音已开启";
-      };
-      utterance.onend = () => {
-        activeUtterance = null;
-      };
-      utterance.onerror = (event) => {
-        activeUtterance = null;
-        if (event.error === "interrupted" || event.error === "canceled") {
-          els.voiceStatus.textContent = voiceUnlocked ? "语音已开启" : "开启语音";
-          return;
-        }
-        playFallbackAudio(text);
-      };
-      activeUtterance = utterance;
-      speechSynthesis.speak(utterance);
+      if (options.browserOnly) return;
+      preloadTts(text);
+      await playTencentTts(text).catch(() => {
+        els.voiceStatus.textContent = "请重试";
+      });
     }
 
     function unlockVoice() {
       voiceUnlocked = true;
-      speak(currentItem.word, { onlineOnly: true });
+      speak(currentItem.word);
     }
 
     function renderTabs() {
@@ -2270,6 +2261,7 @@
       const options = Array.isArray(data.options) && data.options.length
         ? data.options
         : makeQuizOptions(theme, quizItem);
+      preloadTts(quizItem.word);
       els.quizWord.textContent = quizItem.word;
       els.feedback.textContent = "";
       els.answers.innerHTML = options.map((cn) => `
@@ -2323,6 +2315,7 @@
       els.themeSubtitle.textContent = theme.subtitle;
       renderTabs();
       renderCards();
+      preloadThemeAudio(theme);
       newQuiz();
       setStudyMode("learn");
     }
