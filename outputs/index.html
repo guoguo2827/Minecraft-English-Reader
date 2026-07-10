@@ -1726,7 +1726,12 @@
           { x: 410, y: 720, w: 225, h: 175 },
           { x: 770, y: 720, w: 225, h: 175 },
           { x: 1140, y: 720, w: 225, h: 175 }
-        ]
+        ],
+        iconCleanRects: Array.from({ length: 16 }, (_, index) => {
+          const cols = [45, 410, 770, 1140];
+          const rows = [180, 365, 545, 720];
+          return { x: cols[index % 4], y: rows[Math.floor(index / 4)], w: 62, h: 60 };
+        })
       },
       {
         id: "animals",
@@ -1766,6 +1771,7 @@
         cropRow: Math.floor(index / 4),
         cropCol: index % 4,
         iconRect: theme.iconRects?.[index] || null,
+        iconCleanRects: theme.iconCleanRects?.[index] ? [theme.iconCleanRects[index]] : [],
         cropRect: theme.cropRects?.[index] || null
       }))
     }));
@@ -2186,6 +2192,16 @@
         const dx = (width - dw) / 2;
         const dy = (height - dh) / 2;
         ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+        if (item.iconCleanRects?.length) {
+          ctx.fillStyle = "#fffdf5";
+          item.iconCleanRects.forEach((cleanRect) => {
+            const cleanX = dx + (cleanRect.x - sx) * scale;
+            const cleanY = dy + (cleanRect.y - sy) * scale;
+            const cleanW = cleanRect.w * scale;
+            const cleanH = cleanRect.h * scale;
+            ctx.fillRect(cleanX, cleanY, cleanW, cleanH);
+          });
+        }
       } else {
         ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
       }
