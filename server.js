@@ -17,15 +17,16 @@ const dbPath = process.env.DATABASE_PATH || path.join(dataDir, "app.db");
 const port = Number(process.env.PORT || 3000);
 const inviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const passwordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+const dailyExpLimit = 150;
 const rewardLevels = [
   { level: 1, minExp: 0, title: "煤炭新手", gemKey: "coal" },
-  { level: 2, minExp: 60, title: "铁锭学徒", gemKey: "iron" },
-  { level: 3, minExp: 150, title: "金锭冒险家", gemKey: "gold" },
-  { level: 4, minExp: 290, title: "红石能手", gemKey: "redstone" },
-  { level: 5, minExp: 480, title: "青金石法师", gemKey: "lapis" },
-  { level: 6, minExp: 730, title: "绿宝石大师", gemKey: "emerald" },
-  { level: 7, minExp: 1050, title: "钻石勇士", gemKey: "diamond" },
-  { level: 8, minExp: 1450, title: "下界合金传奇", gemKey: "netherite" }
+  { level: 2, minExp: 120, title: "铁锭学徒", gemKey: "iron" },
+  { level: 3, minExp: 320, title: "金锭冒险家", gemKey: "gold" },
+  { level: 4, minExp: 650, title: "红石能手", gemKey: "redstone" },
+  { level: 5, minExp: 1100, title: "青金石法师", gemKey: "lapis" },
+  { level: 6, minExp: 1700, title: "绿宝石大师", gemKey: "emerald" },
+  { level: 7, minExp: 2500, title: "钻石勇士", gemKey: "diamond" },
+  { level: 8, minExp: 3600, title: "下界合金传奇", gemKey: "netherite" }
 ];
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -647,7 +648,12 @@ function eventPayload(event) {
 }
 
 function grantReward(userId, event) {
-  const beforeLevel = levelInfo(ensureRewardRow(userId).total_exp).level;
+  const row = ensureRewardRow(userId);
+  const beforeLevel = levelInfo(row.total_exp).level;
+  const requestedExp = Math.max(0, Number(event.exp || 0));
+  const remainingDailyExp = Math.max(0, dailyExpLimit - row.today_exp);
+  const grantedExp = Math.min(requestedExp, remainingDailyExp);
+  const label = event.label || "";
   let inserted = null;
   try {
     const result = db.prepare(`
@@ -656,8 +662,8 @@ function grantReward(userId, event) {
     `).run(
       userId,
       event.type,
-      event.exp,
-      event.label || "",
+      grantedExp,
+      requestedExp > 0 && grantedExp === 0 ? `${label}（今日经验已达上限）` : label,
       event.themeId || "",
       event.word || "",
       event.uniqueKey || null,
@@ -669,14 +675,14 @@ function grantReward(userId, event) {
     return { events: [], state: rewardSummary(userId) };
   }
 
-  if (event.exp > 0) {
+  if (grantedExp > 0) {
     db.prepare(`
       UPDATE user_rewards
       SET total_exp = total_exp + ?,
           today_exp = today_exp + ?,
           updated_at = ?
       WHERE user_id = ?
-    `).run(event.exp, event.exp, now(), userId);
+    `).run(grantedExp, grantedExp, now(), userId);
   }
 
   const state = rewardSummary(userId);
@@ -717,7 +723,7 @@ function maybeGrantThemeBadge(userId, theme) {
   }
   return grantReward(userId, {
     type: "theme_badge",
-    exp: 60,
+    exp: 30,
     label: `完成主题：${theme.title}`,
     themeId: theme.id,
     uniqueKey: `theme:${userId}:${theme.id}`
@@ -728,8 +734,8 @@ function rewardRead(userId, themeId, word) {
   const date = todayKey();
   return grantReward(userId, {
     type: "read",
-    exp: 1,
-    label: "点读练习 +1",
+    exp: 0,
+    label: "点读练习",
     themeId,
     word,
     uniqueKey: `read:${userId}:${date}:${themeId}:${word}`
@@ -749,14 +755,14 @@ function rewardAnswer(userId, theme, word, correct, hadActiveReview, fixedReview
   db.prepare("UPDATE user_rewards SET streak_correct = ?, updated_at = ? WHERE user_id = ?").run(nextStreak, now(), userId);
   mergeRewardResult(result, grantReward(userId, {
     type: hadActiveReview ? "review_correct" : "correct",
-    exp: hadActiveReview ? 12 : 8,
-    label: hadActiveReview ? "错题答对 +12" : "答题正确 +8",
+    exp: hadActiveReview ? 4 : 5,
+    label: hadActiveReview ? "错题答对 +4" : "答题正确 +5",
     themeId: theme.id,
     word
   }));
 
   if (nextStreak === 3 || nextStreak === 5 || nextStreak === 10 || (nextStreak > 10 && nextStreak % 10 === 0)) {
-    const bonus = nextStreak >= 10 ? 22 : nextStreak === 5 ? 15 : 10;
+    const bonus = nextStreak >= 10 ? 8 : nextStreak === 5 ? 5 : 3;
     mergeRewardResult(result, grantReward(userId, {
       type: "streak",
       exp: bonus,
@@ -770,8 +776,8 @@ function rewardAnswer(userId, theme, word, correct, hadActiveReview, fixedReview
     db.prepare("UPDATE user_rewards SET fixed_reviews = fixed_reviews + 1, updated_at = ? WHERE user_id = ?").run(now(), userId);
     mergeRewardResult(result, grantReward(userId, {
       type: "review_fixed",
-      exp: 25,
-      label: "错题已修正 +25",
+      exp: 10,
+      label: "错题已修正 +10",
       themeId: theme.id,
       word
     }));
