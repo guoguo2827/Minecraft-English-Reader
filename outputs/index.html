@@ -1730,7 +1730,12 @@
         iconCleanRects: Array.from({ length: 16 }, (_, index) => {
           const cols = [45, 410, 770, 1140];
           const rows = [180, 365, 545, 720];
-          return { x: cols[index % 4], y: rows[Math.floor(index / 4)], w: 62, h: 60 };
+          const x = cols[index % 4];
+          const y = rows[Math.floor(index / 4)];
+          return [
+            { x, y, w: 70, h: 62 },
+            { x: x + 150, y, w: 75, h: 175 }
+          ];
         })
       },
       {
@@ -1765,15 +1770,18 @@
       }
     ].reverse().map((theme) => ({
       ...theme,
-      items: theme.items.map(([word, cn], index) => ({
-        word,
-        cn,
-        cropRow: Math.floor(index / 4),
-        cropCol: index % 4,
-        iconRect: theme.iconRects?.[index] || null,
-        iconCleanRects: theme.iconCleanRects?.[index] ? [theme.iconCleanRects[index]] : [],
-        cropRect: theme.cropRects?.[index] || null
-      }))
+      items: theme.items.map(([word, cn], index) => {
+        const cleanRects = theme.iconCleanRects?.[index];
+        return {
+          word,
+          cn,
+          cropRow: Math.floor(index / 4),
+          cropCol: index % 4,
+          iconRect: theme.iconRects?.[index] || null,
+          iconCleanRects: Array.isArray(cleanRects) ? cleanRects : (cleanRects ? [cleanRects] : []),
+          cropRect: theme.cropRects?.[index] || null
+        };
+      })
     }));
 
     const crop = { x: 30, y: 165, w: 1476, h: 715 };
