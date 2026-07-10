@@ -872,11 +872,16 @@ app.post("/api/progress/word", requireAuth, (req, res) => {
 app.get("/api/tts", requireAuth, async (req, res) => {
   try {
     const text = String(req.query.text || "");
+    const requestedVoice = String(req.query.voice || "").trim();
+    const voiceType = getTencentVoiceType();
     const audio = await ensureTtsAudio(text);
     res.setHeader("Content-Type", audio.contentType);
+    res.setHeader("X-TTS-Voice-Type", voiceType === undefined ? "default" : String(voiceType));
+    if (requestedVoice) res.setHeader("X-TTS-Requested-Voice", requestedVoice);
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     return res.sendFile(audio.filePath);
   } catch (error) {
+    res.setHeader("Cache-Control", "no-store");
     return res.status(503).json({ error: "腾讯云 TTS 暂不可用", detail: error.message });
   }
 });
