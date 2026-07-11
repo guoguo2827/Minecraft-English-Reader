@@ -150,7 +150,7 @@
 
     .study-bar {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
+      grid-template-columns: minmax(120px, .55fr) minmax(210px, .8fr) minmax(280px, 1.1fr) auto;
       gap: 10px;
       align-items: center;
       padding: 12px;
@@ -169,6 +169,103 @@
       margin: 2px 0 0;
       font-weight: 900;
       color: #6b4c28;
+    }
+
+    .mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 6px;
+      border: 4px solid #6b4a23;
+      border-radius: 8px;
+      background: #3d2818;
+    }
+
+    .mode-switch button {
+      min-height: 40px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #fff8da;
+      font-weight: 1000;
+    }
+
+    body[data-study-mode="learn"] [data-mode-button="learn"],
+    body[data-study-mode="quiz"] [data-mode-button="quiz"] {
+      background: #f5c94d;
+      color: #20330f;
+      box-shadow: inset 0 -4px 0 rgba(0,0,0,.18);
+    }
+
+    .core-reward {
+      display: grid;
+      grid-template-columns: 56px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+      padding: 8px;
+      border: 4px solid #2a1a0c;
+      border-radius: 8px;
+      background:
+        repeating-linear-gradient(45deg, rgba(255,255,255,.08) 0 8px, transparent 8px 16px),
+        linear-gradient(180deg, #213c21, #142715);
+      color: #fff8da;
+      box-shadow: inset 0 -6px 0 rgba(0,0,0,.24);
+    }
+
+    .core-gem {
+      display: grid;
+      place-items: center;
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(255,255,255,.32);
+      border-radius: 8px;
+      background: rgba(0,0,0,.2);
+      box-shadow: 0 0 18px var(--gem-glow, rgba(84,240,216,.45));
+    }
+
+    .core-gem svg {
+      width: 38px;
+      height: 38px;
+      image-rendering: pixelated;
+    }
+
+    .core-reward h3 {
+      margin: 0;
+      font-size: clamp(16px, 1.5vw, 22px);
+      line-height: 1;
+    }
+
+    .core-reward p {
+      margin: 4px 0 0;
+      color: #ffe89b;
+      font-size: 13px;
+    }
+
+    .reward-bar {
+      grid-column: 1 / -1;
+      height: 14px;
+      overflow: hidden;
+      border: 2px solid rgba(255,255,255,.28);
+      border-radius: 8px;
+      background: rgba(0,0,0,.28);
+    }
+
+    .reward-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #2fae57, #71e6ff, #fff2a8);
+      transition: width .45s ease;
+    }
+
+    .reward-stats {
+      display: grid;
+      grid-template-columns: repeat(3, auto);
+      gap: 8px;
+      font-weight: 1000;
+      white-space: nowrap;
+      color: #cce8bd;
+      font-size: 12px;
     }
 
     .cards {
@@ -239,6 +336,20 @@
       visibility: hidden;
     }
 
+    body[data-study-mode="quiz"] .cards {
+      filter: blur(5px) grayscale(.18);
+      opacity: .45;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    body[data-study-mode="learn"] .quiz {
+      filter: blur(5px) grayscale(.18);
+      opacity: .45;
+      pointer-events: none;
+      user-select: none;
+    }
+
     .quiz {
       display: grid;
       grid-template-columns: minmax(150px, .8fr) auto auto minmax(0, 2.6fr);
@@ -275,6 +386,15 @@
 
     .answer.correct { background: #caffaf; border-color: #269f3c; }
     .answer.wrong { background: #ffd1bd; border-color: #c54e35; }
+
+    .reward-pop {
+      animation: reward-pop .55s ease;
+    }
+
+    @keyframes reward-pop {
+      45% { transform: scale(1.03); }
+      100% { transform: scale(1); }
+    }
 
     .feedback {
       min-height: 24px;
@@ -318,7 +438,7 @@
     }
   </style>
 </head>
-<body data-show-cn="true">
+<body data-show-cn="true" data-study-mode="learn">
   <header>
     <div>
       <h1>Minecraft Core Words Reader</h1>
@@ -339,8 +459,24 @@
           <h2 id="themeTitle"></h2>
           <p id="themeSubtitle"></p>
         </div>
+        <div class="mode-switch" aria-label="学习模式切换">
+          <button type="button" data-mode-button="learn">学习模式</button>
+          <button type="button" data-mode-button="quiz">答题模式</button>
+        </div>
+        <div class="core-reward" id="rewardPanel">
+          <div class="core-gem" id="rewardGem" aria-hidden="true"></div>
+          <div>
+            <h3 id="rewardTitle">Lv1 Core Starter</h3>
+            <p id="rewardExp">0 / 80 EXP</p>
+          </div>
+          <div class="reward-stats">
+            <span>今日 <b id="rewardToday">0</b></span>
+            <span>连对 <b id="rewardStreak">0</b></span>
+            <span>修正 <b id="rewardFixed">0</b></span>
+          </div>
+          <div class="reward-bar"><div class="reward-fill" id="rewardFill"></div></div>
+        </div>
         <button class="pill" id="speakThemeBtn" type="button">读当前词</button>
-        <button class="pill" id="quizBtn" type="button">下一题</button>
       </section>
       <section class="cards" id="cards"></section>
       <section class="quiz">
@@ -349,6 +485,7 @@
           <div class="feedback" id="feedback"></div>
         </div>
         <button class="pill" id="speakQuizBtn" type="button">读题</button>
+        <button class="pill" id="quizBtn" type="button">下一题</button>
         <button class="pill" id="scrollTopBtn" type="button">回到卡片</button>
         <div class="answers" id="answers"></div>
       </section>
@@ -362,12 +499,36 @@
     const TTS_VERSION = "20260710-501008";
     const TTS_VOICE_TYPE = "501008";
     const cnKey = "minecraft-core-reader-show-cn";
+    const rewardKey = "minecraft-core-reader-rewards";
     const themes = window.CORE_WORD_THEMES || [];
     let currentThemeIndex = 0;
     let currentItem = null;
     let quizItem = null;
     let audio = null;
     let voiceReady = false;
+    let studyMode = "learn";
+
+    const rewardLevels = [
+      { level: 1, minExp: 0, title: "Core Starter", gem: "coal" },
+      { level: 2, minExp: 80, title: "Block Builder", gem: "iron" },
+      { level: 3, minExp: 210, title: "Word Miner", gem: "gold" },
+      { level: 4, minExp: 420, title: "Redstone Reader", gem: "redstone" },
+      { level: 5, minExp: 700, title: "Lapis Learner", gem: "lapis" },
+      { level: 6, minExp: 1080, title: "Emerald Speaker", gem: "emerald" },
+      { level: 7, minExp: 1580, title: "Diamond Expert", gem: "diamond" },
+      { level: 8, minExp: 2300, title: "Netherite Legend", gem: "netherite" }
+    ];
+    const gemThemes = {
+      coal: { main: "#3f4548", dark: "#171a1c", light: "#9ca5a8", glow: "rgba(190,205,210,.55)" },
+      iron: { main: "#c9d0d2", dark: "#6f777b", light: "#f6fbff", glow: "rgba(230,242,247,.62)" },
+      gold: { main: "#f5c94d", dark: "#9c6a16", light: "#fff2a8", glow: "rgba(255,220,84,.72)" },
+      redstone: { main: "#dc3f38", dark: "#7f1514", light: "#ff9f8f", glow: "rgba(255,78,62,.68)" },
+      lapis: { main: "#356fdd", dark: "#183481", light: "#9ecbff", glow: "rgba(77,133,255,.7)" },
+      emerald: { main: "#24c76a", dark: "#08733d", light: "#a5ffd0", glow: "rgba(57,239,135,.72)" },
+      diamond: { main: "#49dce7", dark: "#138391", light: "#d5ffff", glow: "rgba(84,240,255,.78)" },
+      netherite: { main: "#5d5166", dark: "#251d2b", light: "#c6b5d0", glow: "rgba(185,146,220,.65)" }
+    };
+    let rewardState = loadRewardState();
 
     const els = {
       themeTabs: document.querySelector("#themeTabs"),
@@ -382,7 +543,16 @@
       speakQuizBtn: document.querySelector("#speakQuizBtn"),
       scrollTopBtn: document.querySelector("#scrollTopBtn"),
       answers: document.querySelector("#answers"),
-      feedback: document.querySelector("#feedback")
+      feedback: document.querySelector("#feedback"),
+      rewardPanel: document.querySelector("#rewardPanel"),
+      rewardGem: document.querySelector("#rewardGem"),
+      rewardTitle: document.querySelector("#rewardTitle"),
+      rewardExp: document.querySelector("#rewardExp"),
+      rewardFill: document.querySelector("#rewardFill"),
+      rewardToday: document.querySelector("#rewardToday"),
+      rewardStreak: document.querySelector("#rewardStreak"),
+      rewardFixed: document.querySelector("#rewardFixed"),
+      modeButtons: document.querySelectorAll("[data-mode-button]")
     };
 
     function makeTtsUrl(text) {
@@ -425,6 +595,103 @@
       localStorage.setItem(cnKey, visible ? "true" : "false");
     }
 
+    function todayKey() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function loadRewardState() {
+      let state = null;
+      try {
+        state = JSON.parse(localStorage.getItem(rewardKey) || "null");
+      } catch {
+        localStorage.removeItem(rewardKey);
+      }
+      const date = todayKey();
+      const base = {
+        totalExp: 0,
+        todayExp: 0,
+        rewardDate: date,
+        streakCorrect: 0,
+        fixedReviews: 0,
+        readKeys: {},
+        answeredKeys: {}
+      };
+      state = { ...base, ...(state || {}) };
+      if (state.rewardDate !== date) {
+        state.rewardDate = date;
+        state.todayExp = 0;
+        state.readKeys = {};
+      }
+      return state;
+    }
+
+    function saveRewardState() {
+      localStorage.setItem(rewardKey, JSON.stringify(rewardState));
+    }
+
+    function getLevelInfo(totalExp) {
+      let current = rewardLevels[0];
+      for (const level of rewardLevels) {
+        if (totalExp >= level.minExp) current = level;
+      }
+      const next = rewardLevels.find((level) => level.minExp > current.minExp);
+      const nextMin = next ? next.minExp : current.minExp + 600;
+      return {
+        ...current,
+        levelExp: Math.max(0, totalExp - current.minExp),
+        levelNeed: Math.max(1, nextMin - current.minExp)
+      };
+    }
+
+    function gemSvg(theme) {
+      return `
+        <svg viewBox="0 0 64 64" role="img" aria-label="core reward gem">
+          <rect x="18" y="4" width="28" height="8" fill="${theme.light}"/>
+          <rect x="10" y="12" width="44" height="10" fill="${theme.main}"/>
+          <rect x="6" y="22" width="52" height="14" fill="${theme.dark}"/>
+          <rect x="14" y="22" width="36" height="14" fill="${theme.main}"/>
+          <rect x="18" y="36" width="28" height="14" fill="${theme.main}"/>
+          <rect x="24" y="50" width="16" height="8" fill="${theme.dark}"/>
+          <rect x="22" y="14" width="12" height="8" fill="${theme.light}"/>
+          <rect x="40" y="24" width="8" height="10" fill="${theme.light}"/>
+        </svg>
+      `;
+    }
+
+    function renderReward() {
+      const info = getLevelInfo(rewardState.totalExp);
+      const theme = gemThemes[info.gem] || gemThemes.coal;
+      els.rewardPanel.style.setProperty("--gem-glow", theme.glow);
+      els.rewardGem.innerHTML = gemSvg(theme);
+      els.rewardTitle.textContent = `Lv${info.level} ${info.title}`;
+      els.rewardExp.textContent = `${info.levelExp} / ${info.levelNeed} EXP`;
+      els.rewardFill.style.width = `${Math.min(100, Math.round((info.levelExp / info.levelNeed) * 100))}%`;
+      els.rewardToday.textContent = rewardState.todayExp || 0;
+      els.rewardStreak.textContent = rewardState.streakCorrect || 0;
+      els.rewardFixed.textContent = rewardState.fixedReviews || 0;
+    }
+
+    function grantReward(exp, streakDelta = 0) {
+      if (exp > 0) {
+        rewardState.totalExp += exp;
+        rewardState.todayExp += exp;
+      }
+      if (streakDelta) rewardState.streakCorrect += streakDelta;
+      saveRewardState();
+      renderReward();
+      els.rewardPanel.classList.remove("reward-pop");
+      void els.rewardPanel.offsetWidth;
+      els.rewardPanel.classList.add("reward-pop");
+    }
+
+    function setStudyMode(mode) {
+      studyMode = mode === "quiz" ? "quiz" : "learn";
+      document.body.dataset.studyMode = studyMode;
+      if (studyMode === "quiz") {
+        setTimeout(() => document.querySelector(".quiz")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+      }
+    }
+
     function shuffle(array) {
       return array.map((value) => ({ value, sort: Math.random() })).sort((a, b) => a.sort - b.sort).map(({ value }) => value);
     }
@@ -453,6 +720,11 @@
           document.querySelectorAll(".word-card.speaking").forEach((node) => node.classList.remove("speaking"));
           card.classList.add("speaking");
           setTimeout(() => card.classList.remove("speaking"), 500);
+          const key = `${todayKey()}:${theme.id}:${item.word}`;
+          if (!rewardState.readKeys[key]) {
+            rewardState.readKeys[key] = true;
+            grantReward(1, 0);
+          }
           speak(item.word);
         });
       });
@@ -476,6 +748,18 @@
           });
           if (!ok) button.classList.add("wrong");
           els.feedback.textContent = ok ? "答对了！" : `正确答案：${quizItem.cn}`;
+          if (ok) {
+            rewardState.streakCorrect += 1;
+            const answeredKey = `${theme.id}:${quizItem.word}`;
+            const firstCorrect = !rewardState.answeredKeys[answeredKey];
+            rewardState.answeredKeys[answeredKey] = true;
+            const streakBonus = rewardState.streakCorrect === 3 ? 3 : rewardState.streakCorrect === 5 ? 5 : rewardState.streakCorrect % 10 === 0 ? 8 : 0;
+            grantReward((firstCorrect ? 5 : 1) + streakBonus, 0);
+          } else {
+            rewardState.streakCorrect = 0;
+            saveRewardState();
+            renderReward();
+          }
           speak(quizItem.word);
         }, { once: true });
       });
@@ -504,8 +788,13 @@
     els.quizBtn.addEventListener("click", makeQuiz);
     els.speakQuizBtn.addEventListener("click", () => speak(quizItem?.word));
     els.scrollTopBtn.addEventListener("click", () => els.cards.scrollTo({ top: 0, behavior: "smooth" }));
+    els.modeButtons.forEach((button) => {
+      button.addEventListener("click", () => setStudyMode(button.dataset.modeButton));
+    });
 
     setChineseVisible(localStorage.getItem(cnKey) !== "false");
+    renderReward();
+    setStudyMode("learn");
     setTheme(0);
   </script>
 </body>
