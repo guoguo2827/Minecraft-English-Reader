@@ -150,13 +150,21 @@
 
     .study-bar {
       display: grid;
-      grid-template-columns: minmax(120px, .55fr) minmax(210px, .8fr) minmax(280px, 1.1fr) auto;
+      grid-template-columns: minmax(120px, .45fr) minmax(220px, .65fr) minmax(520px, 1.7fr);
       gap: 10px;
       align-items: center;
       padding: 12px;
       border: 4px solid var(--wood);
       border-radius: 8px;
       background: rgba(255, 248, 223, .95);
+    }
+
+    .study-actions {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      align-items: center;
     }
 
     .study-bar h2 {
@@ -199,7 +207,7 @@
 
     .core-reward {
       display: grid;
-      grid-template-columns: 56px minmax(0, 1fr) auto;
+      grid-template-columns: 56px minmax(150px, 1fr) minmax(210px, auto);
       gap: 8px;
       align-items: center;
       min-width: 0;
@@ -413,6 +421,9 @@
 
     @media (max-width: 1180px) {
       main { grid-template-columns: 210px minmax(0, 1fr); }
+      .study-bar { grid-template-columns: 1fr; }
+      .study-actions { justify-content: stretch; }
+      .study-actions .pill { flex: 1; }
       .cards { grid-template-columns: repeat(4, minmax(120px, 1fr)); }
       .quiz { grid-template-columns: minmax(130px, .7fr) auto auto minmax(0, 2.3fr); }
       .answer { font-size: 17px; }
@@ -476,7 +487,9 @@
           </div>
           <div class="reward-bar"><div class="reward-fill" id="rewardFill"></div></div>
         </div>
-        <button class="pill" id="speakThemeBtn" type="button">读当前词</button>
+        <div class="study-actions">
+          <button class="pill" id="speakThemeBtn" type="button">读当前词</button>
+        </div>
       </section>
       <section class="cards" id="cards"></section>
       <section class="quiz">
