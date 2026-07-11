@@ -1,1120 +1,1120 @@
 window.CORE_WORD_THEMES = [
   {
     "id": "animal",
-    "title": "????",
-    "subtitle": "Animals",
+    "title": "Animal",
+    "subtitle": "20 words",
     "items": [
       {
         "word": "bat",
-        "cn": "??",
+        "cn": "蝙蝠",
         "image": "core-icons/Animal/bat.webp"
       },
       {
         "word": "bear",
-        "cn": "?",
+        "cn": "熊",
         "image": "core-icons/Animal/bear.webp"
       },
       {
         "word": "cat",
-        "cn": "?",
+        "cn": "猫",
         "image": "core-icons/Animal/cat.webp"
       },
       {
         "word": "chicken",
-        "cn": "?",
+        "cn": "鸡",
         "image": "core-icons/Animal/chicken.webp"
       },
       {
         "word": "cow",
-        "cn": "?",
+        "cn": "牛",
         "image": "core-icons/Animal/cow.webp"
       },
       {
         "word": "dolphin",
-        "cn": "??",
+        "cn": "海豚",
         "image": "core-icons/Animal/dolphin.webp"
       },
       {
         "word": "donkey",
-        "cn": "?",
+        "cn": "驴",
         "image": "core-icons/Animal/donkey.webp"
       },
       {
         "word": "fox",
-        "cn": "??",
+        "cn": "狐狸",
         "image": "core-icons/Animal/fox.webp"
       },
       {
         "word": "horse",
-        "cn": "?",
+        "cn": "马",
         "image": "core-icons/Animal/horse.webp"
       },
       {
         "word": "llama",
-        "cn": "??",
+        "cn": "羊驼",
         "image": "core-icons/Animal/llama.webp"
       },
       {
         "word": "mule",
-        "cn": "??",
+        "cn": "骡",
         "image": "core-icons/Animal/mule.webp"
       },
       {
         "word": "ocelot",
-        "cn": "??",
+        "cn": "豹猫",
         "image": "core-icons/Animal/ocelot.webp"
       },
       {
         "word": "panda",
-        "cn": "??",
+        "cn": "熊猫",
         "image": "core-icons/Animal/panda.webp"
       },
       {
         "word": "parrot",
-        "cn": "??",
+        "cn": "鹦鹉",
         "image": "core-icons/Animal/parrot.webp"
       },
       {
         "word": "pig",
-        "cn": "?",
+        "cn": "猪",
         "image": "core-icons/Animal/pig.webp"
       },
       {
         "word": "rabbit",
-        "cn": "??",
+        "cn": "兔子",
         "image": "core-icons/Animal/rabbit.webp"
       },
       {
         "word": "sheep",
-        "cn": "?",
+        "cn": "羊",
         "image": "core-icons/Animal/sheep.webp"
       },
       {
         "word": "squid",
-        "cn": "??",
+        "cn": "鱿鱼",
         "image": "core-icons/Animal/squid.webp"
       },
       {
         "word": "turtle",
-        "cn": "??",
+        "cn": "海龟",
         "image": "core-icons/Animal/turtle.webp"
       },
       {
         "word": "wolf",
-        "cn": "?",
+        "cn": "狼",
         "image": "core-icons/Animal/wolf.webp"
       }
     ]
   },
   {
     "id": "block",
-    "title": "????",
-    "subtitle": "Blocks",
+    "title": "Block",
+    "subtitle": "30 words",
     "items": [
       {
         "word": "andesite",
-        "cn": "???",
+        "cn": "安山岩",
         "image": "core-icons/Block/andesite.webp"
       },
       {
         "word": "bedrock",
-        "cn": "??",
+        "cn": "基岩",
         "image": "core-icons/Block/bedrock.webp"
       },
       {
         "word": "bricks",
-        "cn": "??",
+        "cn": "砖块",
         "image": "core-icons/Block/bricks.webp"
       },
       {
         "word": "carpet",
-        "cn": "??",
+        "cn": "地毯",
         "image": "core-icons/Block/carpet.webp"
       },
       {
         "word": "clay",
-        "cn": "??",
+        "cn": "黏土",
         "image": "core-icons/Block/clay.webp"
       },
       {
         "word": "coal",
-        "cn": "??",
+        "cn": "煤炭",
         "image": "core-icons/Block/coal.webp"
       },
       {
         "word": "cobblestone",
-        "cn": "??",
+        "cn": "圆石",
         "image": "core-icons/Block/cobblestone.webp"
       },
       {
         "word": "concrete",
-        "cn": "???",
+        "cn": "混凝土",
         "image": "core-icons/Block/concrete.webp"
       },
       {
         "word": "diorite",
-        "cn": "???",
+        "cn": "闪长岩",
         "image": "core-icons/Block/diorite.webp"
       },
       {
         "word": "dirt",
-        "cn": "??",
+        "cn": "泥土",
         "image": "core-icons/Block/dirt.webp"
       },
       {
         "word": "glowstone",
-        "cn": "??",
+        "cn": "荧石",
         "image": "core-icons/Block/glowstone.webp"
       },
       {
         "word": "granite",
-        "cn": "???",
+        "cn": "花岗岩",
         "image": "core-icons/Block/granite.webp"
       },
       {
         "word": "grass",
-        "cn": "???",
+        "cn": "草方块",
         "image": "core-icons/Block/grass.webp"
       },
       {
         "word": "gravel",
-        "cn": "??",
+        "cn": "沙砾",
         "image": "core-icons/Block/gravel.webp"
       },
       {
         "word": "ice",
-        "cn": "?",
+        "cn": "冰",
         "image": "core-icons/Block/ice.webp"
       },
       {
         "word": "lava",
-        "cn": "??",
+        "cn": "熔岩",
         "image": "core-icons/Block/lava.webp"
       },
       {
         "word": "magma",
-        "cn": "???",
+        "cn": "岩浆",
         "image": "core-icons/Block/magma.webp"
       },
       {
         "word": "netherrack",
-        "cn": "???",
+        "cn": "下界岩",
         "image": "core-icons/Block/netherrack.webp"
       },
       {
         "word": "obsidian",
-        "cn": "???",
+        "cn": "黑曜石",
         "image": "core-icons/Block/obsidian.webp"
       },
       {
         "word": "planks",
-        "cn": "??",
+        "cn": "木板",
         "image": "core-icons/Block/planks.webp"
       },
       {
         "word": "podzol",
-        "cn": "???",
+        "cn": "灰化土",
         "image": "core-icons/Block/podzol.webp"
       },
       {
         "word": "prismarine",
-        "cn": "???",
+        "cn": "海晶石",
         "image": "core-icons/Block/prismarine.webp"
       },
       {
         "word": "sand",
-        "cn": "??",
+        "cn": "沙子",
         "image": "core-icons/Block/sand.webp"
       },
       {
         "word": "sandstone",
-        "cn": "??",
+        "cn": "砂岩",
         "image": "core-icons/Block/sandstone.webp"
       },
       {
         "word": "skull",
-        "cn": "??",
+        "cn": "头颅",
         "image": "core-icons/Block/skull.webp"
       },
       {
         "word": "snow",
-        "cn": "?",
+        "cn": "雪",
         "image": "core-icons/Block/snow.webp"
       },
       {
         "word": "stone",
-        "cn": "??",
+        "cn": "石头",
         "image": "core-icons/Block/stone.webp"
       },
       {
         "word": "tnt",
-        "cn": "TNT",
+        "cn": "brick",
         "image": "core-icons/Block/tnt.webp"
       },
       {
         "word": "wood",
-        "cn": "??",
+        "cn": "木头",
         "image": "core-icons/Block/wood.webp"
       },
       {
         "word": "wool",
-        "cn": "??",
+        "cn": "羊毛",
         "image": "core-icons/Block/wool.webp"
       }
     ]
   },
   {
     "id": "color",
-    "title": "????",
-    "subtitle": "Colors",
+    "title": "Color",
+    "subtitle": "10 words",
     "items": [
       {
         "word": "black",
-        "cn": "??",
+        "cn": "黑色",
         "image": "core-icons/Color/black.webp"
       },
       {
         "word": "blue",
-        "cn": "??",
+        "cn": "蓝色",
         "image": "core-icons/Color/blue.webp"
       },
       {
         "word": "brown",
-        "cn": "??",
+        "cn": "棕色",
         "image": "core-icons/Color/brown.webp"
       },
       {
         "word": "gray",
-        "cn": "??",
+        "cn": "灰色",
         "image": "core-icons/Color/gray.webp"
       },
       {
         "word": "green",
-        "cn": "??",
+        "cn": "绿色",
         "image": "core-icons/Color/green.webp"
       },
       {
         "word": "lime",
-        "cn": "???",
+        "cn": "黄绿色",
         "image": "core-icons/Color/lime.webp"
       },
       {
         "word": "purple",
-        "cn": "??",
+        "cn": "紫色",
         "image": "core-icons/Color/purple.webp"
       },
       {
         "word": "red",
-        "cn": "??",
+        "cn": "红色",
         "image": "core-icons/Color/red.webp"
       },
       {
         "word": "white",
-        "cn": "??",
+        "cn": "白色",
         "image": "core-icons/Color/white.webp"
       },
       {
         "word": "yellow",
-        "cn": "??",
+        "cn": "黄色",
         "image": "core-icons/Color/yellow.webp"
       }
     ]
   },
   {
     "id": "enemy",
-    "title": "????",
-    "subtitle": "Hostile Mobs",
+    "title": "Enemy",
+    "subtitle": "12 words",
     "items": [
       {
         "word": "blaze",
-        "cn": "???",
+        "cn": "烈焰人",
         "image": "core-icons/Enemy/blaze.webp"
       },
       {
         "word": "creeper",
-        "cn": "???",
+        "cn": "爬行者",
         "image": "core-icons/Enemy/creeper.webp"
       },
       {
         "word": "enderdragon",
-        "cn": "???",
+        "cn": "末影龙",
         "image": "core-icons/Enemy/enderdragon.webp"
       },
       {
         "word": "ghast",
-        "cn": "??",
+        "cn": "恶魂",
         "image": "core-icons/Enemy/ghast.webp"
       },
       {
         "word": "phantom",
-        "cn": "??",
+        "cn": "幻翼",
         "image": "core-icons/Enemy/phantom.webp"
       },
       {
         "word": "silverfish",
-        "cn": "??",
+        "cn": "蠹虫",
         "image": "core-icons/Enemy/silverfish.webp"
       },
       {
         "word": "skeleton",
-        "cn": "??",
+        "cn": "骷髅",
         "image": "core-icons/Enemy/skeleton.webp"
       },
       {
         "word": "slime",
-        "cn": "???",
+        "cn": "史莱姆",
         "image": "core-icons/Enemy/slime.webp"
       },
       {
         "word": "spider",
-        "cn": "??",
+        "cn": "蜘蛛",
         "image": "core-icons/Enemy/spider.webp"
       },
       {
         "word": "witch",
-        "cn": "??",
+        "cn": "女巫",
         "image": "core-icons/Enemy/witch.webp"
       },
       {
         "word": "wither",
-        "cn": "??",
+        "cn": "凋灵",
         "image": "core-icons/Enemy/wither.webp"
       },
       {
         "word": "zombie",
-        "cn": "??",
+        "cn": "僵尸",
         "image": "core-icons/Enemy/zombie.webp"
       }
     ]
   },
   {
     "id": "food",
-    "title": "????",
-    "subtitle": "Food",
+    "title": "Food",
+    "subtitle": "14 words",
     "items": [
       {
         "word": "apple",
-        "cn": "??",
+        "cn": "苹果",
         "image": "core-icons/Food/apple.webp"
       },
       {
         "word": "beetroot",
-        "cn": "???",
+        "cn": "甜菜根",
         "image": "core-icons/Food/beetroot.webp"
       },
       {
         "word": "berries",
-        "cn": "??",
+        "cn": "浆果",
         "image": "core-icons/Food/berries.webp"
       },
       {
         "word": "bread",
-        "cn": "??",
+        "cn": "面包",
         "image": "core-icons/Food/bread.webp"
       },
       {
         "word": "carrot",
-        "cn": "???",
+        "cn": "胡萝卜",
         "image": "core-icons/Food/carrot.webp"
       },
       {
         "word": "cookie",
-        "cn": "??",
+        "cn": "曲奇",
         "image": "core-icons/Food/cookie.webp"
       },
       {
         "word": "fish",
-        "cn": "?",
+        "cn": "鱼",
         "image": "core-icons/Food/fish.webp"
       },
       {
         "word": "melon",
-        "cn": "??",
+        "cn": "西瓜",
         "image": "core-icons/Food/melon.webp"
       },
       {
         "word": "milk",
-        "cn": "??",
+        "cn": "牛奶",
         "image": "core-icons/Food/milk.webp"
       },
       {
         "word": "pie",
-        "cn": "?",
+        "cn": "派",
         "image": "core-icons/Food/pie.webp"
       },
       {
         "word": "potato",
-        "cn": "??",
+        "cn": "土豆",
         "image": "core-icons/Food/potato.webp"
       },
       {
         "word": "pufferfish",
-        "cn": "??",
+        "cn": "河豚",
         "image": "core-icons/Food/pufferfish.webp"
       },
       {
         "word": "salmon",
-        "cn": "??",
+        "cn": "鲑鱼",
         "image": "core-icons/Food/salmon.webp"
       },
       {
         "word": "soup",
-        "cn": "?",
+        "cn": "汤",
         "image": "core-icons/Food/soup.webp"
       }
     ]
   },
   {
     "id": "material",
-    "title": "????",
-    "subtitle": "Materials",
+    "title": "Material",
+    "subtitle": "22 words",
     "items": [
       {
         "word": "bone",
-        "cn": "??",
+        "cn": "骨头",
         "image": "core-icons/Material/bone.webp"
       },
       {
         "word": "book",
-        "cn": "?",
+        "cn": "书",
         "image": "core-icons/Material/book.webp"
       },
       {
         "word": "charcoal",
-        "cn": "??",
+        "cn": "木炭",
         "image": "core-icons/Material/charcoal.webp"
       },
       {
         "word": "crystal",
-        "cn": "??",
+        "cn": "水晶",
         "image": "core-icons/Material/crystal.webp"
       },
       {
         "word": "diamond",
-        "cn": "??",
+        "cn": "钻石",
         "image": "core-icons/Material/diamond.webp"
       },
       {
         "word": "egg",
-        "cn": "??",
+        "cn": "蛋",
         "image": "core-icons/Material/egg.webp"
       },
       {
         "word": "emerald",
-        "cn": "???",
+        "cn": "绿宝石",
         "image": "core-icons/Material/emerald.webp"
       },
       {
         "word": "feather",
-        "cn": "??",
+        "cn": "羽毛",
         "image": "core-icons/Material/feather.webp"
       },
       {
         "word": "flint",
-        "cn": "??",
+        "cn": "燧石",
         "image": "core-icons/Material/flint.webp"
       },
       {
         "word": "gunpowder",
-        "cn": "??",
+        "cn": "火药",
         "image": "core-icons/Material/gunpowder.webp"
       },
       {
         "word": "hide",
-        "cn": "??",
+        "cn": "皮革",
         "image": "core-icons/Material/hide.webp"
       },
       {
         "word": "iron",
-        "cn": "?",
+        "cn": "铁",
         "image": "core-icons/Material/iron.webp"
       },
       {
         "word": "lapis",
-        "cn": "???",
+        "cn": "青金石",
         "image": "core-icons/Material/lapis.webp"
       },
       {
         "word": "leather",
-        "cn": "??",
+        "cn": "皮革",
         "image": "core-icons/Material/leather.webp"
       },
       {
         "word": "nautilus",
-        "cn": "????",
+        "cn": "鹦鹉螺",
         "image": "core-icons/Material/nautilus.webp"
       },
       {
         "word": "quartz",
-        "cn": "??",
+        "cn": "石英",
         "image": "core-icons/Material/quartz.webp"
       },
       {
         "word": "quill",
-        "cn": "???",
+        "cn": "羽毛笔",
         "image": "core-icons/Material/quill.webp"
       },
       {
         "word": "redstone",
-        "cn": "??",
+        "cn": "红石",
         "image": "core-icons/Material/redstone.webp"
       },
       {
         "word": "shell",
-        "cn": "?",
+        "cn": "壳",
         "image": "core-icons/Material/shell.webp"
       },
       {
         "word": "star",
-        "cn": "????",
+        "cn": "星",
         "image": "core-icons/Material/star.webp"
       },
       {
         "word": "stick",
-        "cn": "??",
+        "cn": "木棍",
         "image": "core-icons/Material/stick.webp"
       },
       {
         "word": "wheat",
-        "cn": "??",
+        "cn": "小麦",
         "image": "core-icons/Material/wheat.webp"
       }
     ]
   },
   {
     "id": "others",
-    "title": "?????",
-    "subtitle": "Core Concepts",
+    "title": "Others",
+    "subtitle": "10 words",
     "items": [
       {
         "word": "breath",
-        "cn": "??",
+        "cn": "气息",
         "image": "core-icons/Others/breath.webp"
       },
       {
         "word": "brewing",
-        "cn": "??",
+        "cn": "酿造",
         "image": "core-icons/Others/brewing.webp"
       },
       {
         "word": "crafting",
-        "cn": "??",
+        "cn": "合成",
         "image": "core-icons/Others/crafting.webp"
       },
       {
         "word": "fishing",
-        "cn": "??",
+        "cn": "钓鱼",
         "image": "core-icons/Others/fishing.webp"
       },
       {
         "word": "fletching",
-        "cn": "??",
+        "cn": "制箭",
         "image": "core-icons/Others/fletching.webp"
       },
       {
         "word": "foot",
-        "cn": "??",
+        "cn": "脚",
         "image": "core-icons/Others/foot.webp"
       },
       {
         "word": "heart",
-        "cn": "???",
+        "cn": "心",
         "image": "core-icons/Others/heart.webp"
       },
       {
         "word": "music",
-        "cn": "??",
+        "cn": "音乐",
         "image": "core-icons/Others/music.webp"
       },
       {
         "word": "ore",
-        "cn": "??",
+        "cn": "矿石",
         "image": "core-icons/Others/ore.webp"
       },
       {
         "word": "smithing",
-        "cn": "??",
+        "cn": "锻造",
         "image": "core-icons/Others/smithing.webp"
       }
     ]
   },
   {
     "id": "plant",
-    "title": "????",
-    "subtitle": "Plants",
+    "title": "Plant",
+    "subtitle": "29 words",
     "items": [
       {
         "word": "acacia",
-        "cn": "???",
+        "cn": "金合欢",
         "image": "core-icons/Plant/acacia.webp"
       },
       {
         "word": "bamboo",
-        "cn": "??",
+        "cn": "竹子",
         "image": "core-icons/Plant/bamboo.webp"
       },
       {
         "word": "bark",
-        "cn": "??",
+        "cn": "木皮",
         "image": "core-icons/Plant/bark.webp"
       },
       {
         "word": "birch",
-        "cn": "??",
+        "cn": "桦木",
         "image": "core-icons/Plant/birch.webp"
       },
       {
         "word": "bush",
-        "cn": "??",
+        "cn": "灌木",
         "image": "core-icons/Plant/bush.webp"
       },
       {
         "word": "cactus",
-        "cn": "???",
+        "cn": "仙人掌",
         "image": "core-icons/Plant/cactus.webp"
       },
       {
         "word": "coral",
-        "cn": "??",
+        "cn": "珊瑚",
         "image": "core-icons/Plant/coral.webp"
       },
       {
         "word": "cornflower",
-        "cn": "???",
+        "cn": "矢车菊",
         "image": "core-icons/Plant/cornflower.webp"
       },
       {
         "word": "daisy",
-        "cn": "??",
+        "cn": "雏菊",
         "image": "core-icons/Plant/daisy.webp"
       },
       {
         "word": "dandelion",
-        "cn": "???",
+        "cn": "蒲公英",
         "image": "core-icons/Plant/dandelion.webp"
       },
       {
         "word": "fern",
-        "cn": "?",
+        "cn": "蕨",
         "image": "core-icons/Plant/fern.webp"
       },
       {
         "word": "flower",
-        "cn": "?",
+        "cn": "花",
         "image": "core-icons/Plant/flower.webp"
       },
       {
         "word": "jungle",
-        "cn": "???",
+        "cn": "丛林",
         "image": "core-icons/Plant/jungle.webp"
       },
       {
         "word": "leaves",
-        "cn": "??",
+        "cn": "树叶",
         "image": "core-icons/Plant/leaves.webp"
       },
       {
         "word": "lily",
-        "cn": "??",
+        "cn": "睡莲",
         "image": "core-icons/Plant/lily.webp"
       },
       {
         "word": "log",
-        "cn": "??",
+        "cn": "原木",
         "image": "core-icons/Plant/log.webp"
       },
       {
         "word": "mushroom",
-        "cn": "??",
+        "cn": "蘑菇",
         "image": "core-icons/Plant/mushroom.webp"
       },
       {
         "word": "oak",
-        "cn": "??",
+        "cn": "橡木",
         "image": "core-icons/Plant/oak.webp"
       },
       {
         "word": "orchid",
-        "cn": "??",
+        "cn": "兰花",
         "image": "core-icons/Plant/orchid.webp"
       },
       {
         "word": "peony",
-        "cn": "??",
+        "cn": "牡丹",
         "image": "core-icons/Plant/peony.webp"
       },
       {
         "word": "pickle",
-        "cn": "???",
+        "cn": "海泡菜",
         "image": "core-icons/Plant/pickle.webp"
       },
       {
         "word": "pumpkin",
-        "cn": "??",
+        "cn": "南瓜",
         "image": "core-icons/Plant/pumpkin.webp"
       },
       {
         "word": "rose",
-        "cn": "??",
+        "cn": "玫瑰",
         "image": "core-icons/Plant/rose.webp"
       },
       {
         "word": "sapling",
-        "cn": "??",
+        "cn": "树苗",
         "image": "core-icons/Plant/sapling.webp"
       },
       {
         "word": "seagrass",
-        "cn": "??",
+        "cn": "海草",
         "image": "core-icons/Plant/seagrass.webp"
       },
       {
         "word": "spruce",
-        "cn": "??",
+        "cn": "云杉",
         "image": "core-icons/Plant/spruce.webp"
       },
       {
         "word": "sugarcane",
-        "cn": "??",
+        "cn": "甘蔗",
         "image": "core-icons/Plant/sugarcane.webp"
       },
       {
         "word": "sunflower",
-        "cn": "???",
+        "cn": "向日葵",
         "image": "core-icons/Plant/sunflower.webp"
       },
       {
         "word": "tulip",
-        "cn": "???",
+        "cn": "郁金香",
         "image": "core-icons/Plant/tulip.webp"
       }
     ]
   },
   {
     "id": "tool",
-    "title": "????",
-    "subtitle": "Tools",
+    "title": "Tool",
+    "subtitle": "53 words",
     "items": [
       {
         "word": "axe",
-        "cn": "??",
+        "cn": "斧",
         "image": "core-icons/Tool/axe.webp"
       },
       {
         "word": "barrel",
-        "cn": "??",
+        "cn": "木桶",
         "image": "core-icons/Tool/barrel.webp"
       },
       {
         "word": "beacon",
-        "cn": "??",
+        "cn": "信标",
         "image": "core-icons/Tool/beacon.webp"
       },
       {
         "word": "bed",
-        "cn": "?",
+        "cn": "床",
         "image": "core-icons/Tool/bed.webp"
       },
       {
         "word": "bell",
-        "cn": "?",
+        "cn": "钟",
         "image": "core-icons/Tool/bell.webp"
       },
       {
         "word": "boat",
-        "cn": "?",
+        "cn": "船",
         "image": "core-icons/Tool/boat.webp"
       },
       {
         "word": "bookshelf",
-        "cn": "??",
+        "cn": "书架",
         "image": "core-icons/Tool/bookshelf.webp"
       },
       {
         "word": "bottle",
-        "cn": "??",
+        "cn": "瓶子",
         "image": "core-icons/Tool/bottle.webp"
       },
       {
         "word": "bowl",
-        "cn": "?",
+        "cn": "碗",
         "image": "core-icons/Tool/bowl.webp"
       },
       {
         "word": "bucket",
-        "cn": "?",
+        "cn": "桶",
         "image": "core-icons/Tool/bucket.webp"
       },
       {
         "word": "campfire",
-        "cn": "??",
+        "cn": "营火",
         "image": "core-icons/Tool/campfire.webp"
       },
       {
         "word": "cauldron",
-        "cn": "???",
+        "cn": "炼药锅",
         "image": "core-icons/Tool/cauldron.webp"
       },
       {
         "word": "chest",
-        "cn": "??",
+        "cn": "箱子",
         "image": "core-icons/Tool/chest.webp"
       },
       {
         "word": "clock",
-        "cn": "??",
+        "cn": "时钟",
         "image": "core-icons/Tool/clock.webp"
       },
       {
         "word": "cobweb",
-        "cn": "???",
+        "cn": "蜘蛛网",
         "image": "core-icons/Tool/cobweb.webp"
       },
       {
         "word": "compass",
-        "cn": "???",
+        "cn": "指南针",
         "image": "core-icons/Tool/compass.webp"
       },
       {
         "word": "door",
-        "cn": "?",
+        "cn": "门",
         "image": "core-icons/Tool/door.webp"
       },
       {
         "word": "farmland",
-        "cn": "??",
+        "cn": "耕地",
         "image": "core-icons/Tool/farmland.webp"
       },
       {
         "word": "fence",
-        "cn": "??",
+        "cn": "栅栏",
         "image": "core-icons/Tool/fence.webp"
       },
       {
         "word": "fire",
-        "cn": "?",
+        "cn": "火",
         "image": "core-icons/Tool/fire.webp"
       },
       {
         "word": "firework",
-        "cn": "??",
+        "cn": "烟花",
         "image": "core-icons/Tool/firework.webp"
       },
       {
         "word": "furnace",
-        "cn": "??",
+        "cn": "熔炉",
         "image": "core-icons/Tool/furnace.webp"
       },
       {
         "word": "gate",
-        "cn": "???",
+        "cn": "栅栏门",
         "image": "core-icons/Tool/gate.webp"
       },
       {
         "word": "glass",
-        "cn": "??",
+        "cn": "玻璃",
         "image": "core-icons/Tool/glass.webp"
       },
       {
         "word": "grindstone",
-        "cn": "??",
+        "cn": "砂轮",
         "image": "core-icons/Tool/grindstone.webp"
       },
       {
         "word": "hay",
-        "cn": "???",
+        "cn": "干草捆",
         "image": "core-icons/Tool/hay.webp"
       },
       {
         "word": "hoe",
-        "cn": "??",
+        "cn": "锄",
         "image": "core-icons/Tool/hoe.webp"
       },
       {
         "word": "hopper",
-        "cn": "??",
+        "cn": "漏斗",
         "image": "core-icons/Tool/hopper.webp"
       },
       {
         "word": "ladder",
-        "cn": "??",
+        "cn": "梯子",
         "image": "core-icons/Tool/ladder.webp"
       },
       {
         "word": "lamp",
-        "cn": "?",
+        "cn": "灯",
         "image": "core-icons/Tool/lamp.webp"
       },
       {
         "word": "lantern",
-        "cn": "??",
+        "cn": "灯笼",
         "image": "core-icons/Tool/lantern.webp"
       },
       {
         "word": "lectern",
-        "cn": "??",
+        "cn": "讲台",
         "image": "core-icons/Tool/lectern.webp"
       },
       {
         "word": "lever",
-        "cn": "??",
+        "cn": "拉杆",
         "image": "core-icons/Tool/lever.webp"
       },
       {
         "word": "loom",
-        "cn": "???",
+        "cn": "织布机",
         "image": "core-icons/Tool/loom.webp"
       },
       {
         "word": "map",
-        "cn": "??",
+        "cn": "地图",
         "image": "core-icons/Tool/map.webp"
       },
       {
         "word": "minecart",
-        "cn": "??",
+        "cn": "矿车",
         "image": "core-icons/Tool/minecart.webp"
       },
       {
         "word": "pickaxe",
-        "cn": "??",
+        "cn": "镐",
         "image": "core-icons/Tool/pickaxe.webp"
       },
       {
         "word": "portal",
-        "cn": "???",
+        "cn": "传送门",
         "image": "core-icons/Tool/portal.webp"
       },
       {
         "word": "pot",
-        "cn": "??",
+        "cn": "花盆",
         "image": "core-icons/Tool/pot.webp"
       },
       {
         "word": "rail",
-        "cn": "??",
+        "cn": "铁轨",
         "image": "core-icons/Tool/rail.webp"
       },
       {
         "word": "repeater",
-        "cn": "???",
+        "cn": "红石中继器",
         "image": "core-icons/Tool/repeater.webp"
       },
       {
         "word": "rocket",
-        "cn": "??",
+        "cn": "火箭",
         "image": "core-icons/Tool/rocket.webp"
       },
       {
         "word": "saddle",
-        "cn": "?",
+        "cn": "鞍",
         "image": "core-icons/Tool/saddle.webp"
       },
       {
         "word": "scaffolding",
-        "cn": "???",
+        "cn": "脚手架",
         "image": "core-icons/Tool/scaffolding.webp"
       },
       {
         "word": "shears",
-        "cn": "??",
+        "cn": "剪刀",
         "image": "core-icons/Tool/shears.webp"
       },
       {
         "word": "shovel",
-        "cn": "??",
+        "cn": "锹",
         "image": "core-icons/Tool/shovel.webp"
       },
       {
         "word": "sign",
-        "cn": "???",
+        "cn": "告示牌",
         "image": "core-icons/Tool/sign.webp"
       },
       {
         "word": "smoker",
-        "cn": "???",
+        "cn": "烟熏炉",
         "image": "core-icons/Tool/smoker.webp"
       },
       {
         "word": "sponge",
-        "cn": "??",
+        "cn": "海绵",
         "image": "core-icons/Tool/sponge.webp"
       },
       {
         "word": "stairs",
-        "cn": "??",
+        "cn": "楼梯",
         "image": "core-icons/Tool/stairs.webp"
       },
       {
         "word": "stonecutter",
-        "cn": "???",
+        "cn": "切石机",
         "image": "core-icons/Tool/stonecutter.webp"
       },
       {
         "word": "table",
-        "cn": "???",
+        "cn": "台",
         "image": "core-icons/Tool/table.webp"
       },
       {
         "word": "torch",
-        "cn": "??",
+        "cn": "火把",
         "image": "core-icons/Tool/torch.webp"
       }
     ]
   },
   {
     "id": "weapon",
-    "title": "????",
-    "subtitle": "Weapons",
+    "title": "Weapon",
+    "subtitle": "10 words",
     "items": [
       {
         "word": "armor",
-        "cn": "??",
+        "cn": "盔甲",
         "image": "core-icons/Weapon/armor.webp"
       },
       {
         "word": "arrow",
-        "cn": "?",
+        "cn": "箭",
         "image": "core-icons/Weapon/arrow.webp"
       },
       {
         "word": "boots",
-        "cn": "??",
+        "cn": "靴子",
         "image": "core-icons/Weapon/boots.webp"
       },
       {
         "word": "bow",
-        "cn": "?",
+        "cn": "弓",
         "image": "core-icons/Weapon/bow.webp"
       },
       {
         "word": "crossbow",
-        "cn": "?",
+        "cn": "弩",
         "image": "core-icons/Weapon/crossbow.webp"
       },
       {
         "word": "helmet",
-        "cn": "??",
+        "cn": "头盔",
         "image": "core-icons/Weapon/helmet.webp"
       },
       {
         "word": "shield",
-        "cn": "??",
+        "cn": "盾牌",
         "image": "core-icons/Weapon/shield.webp"
       },
       {
         "word": "snowball",
-        "cn": "??",
+        "cn": "雪球",
         "image": "core-icons/Weapon/snowball.webp"
       },
       {
         "word": "sword",
-        "cn": "?",
+        "cn": "剑",
         "image": "core-icons/Weapon/sword.webp"
       },
       {
         "word": "trident",
-        "cn": "???",
+        "cn": "三叉戟",
         "image": "core-icons/Weapon/trident.webp"
       }
     ]
