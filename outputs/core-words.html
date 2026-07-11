@@ -433,7 +433,7 @@
       els.themeTabs.innerHTML = themes.map((theme, index) => `
         <button class="theme-tab ${index === currentThemeIndex ? "active" : ""}" type="button" data-theme="${index}">
           <span class="tab-num">${String(index + 1).padStart(2, "0")}</span>
-          <span class="tab-title">${theme.title}<small>${theme.subtitle} · ${theme.items.length} 词</small></span>
+          <span class="tab-title">${theme.title}<small>${theme.items.length} words</small></span>
         </button>
       `).join("");
     }
@@ -487,7 +487,7 @@
       const theme = themes[index];
       currentItem = theme.items[0];
       els.themeTitle.textContent = theme.title;
-      els.themeSubtitle.textContent = `${theme.subtitle} · ${theme.items.length} words`;
+      els.themeSubtitle.textContent = `${theme.items.length} words`;
       renderTabs();
       renderCards();
       makeQuiz();
