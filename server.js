@@ -85,16 +85,22 @@ function hmacSha256(key, value, encoding) {
   return crypto.createHmac("sha256", key).update(value).digest(encoding);
 }
 
-function safeAudioName(text, voiceType, codec) {
+function safeAudioName(text, voiceType, codec, lang = "en") {
   const normalized = String(text || "").trim().toLowerCase().replace(/\s+/g, " ");
   const voiceKey = voiceType === undefined ? "default" : String(voiceType);
-  return sha256(`${normalized}|voice:${voiceKey}|codec:${codec}`).slice(0, 32);
+  return sha256(`${normalized}|lang:${lang}|voice:${voiceKey}|codec:${codec}`).slice(0, 32);
 }
 
-function getTencentVoiceType() {
-  const raw = process.env.TENCENT_TTS_VOICE_TYPE || process.env.TENCENT_TTS_VOICE_NAME || "";
+function parseVoiceType(raw) {
   if (/^-?\d+$/.test(String(raw).trim())) return Number(raw);
   return undefined;
+}
+
+function getTencentVoiceType(lang = "en") {
+  if (lang === "zh") {
+    return parseVoiceType(process.env.TENCENT_TTS_ZH_VOICE_TYPE || "");
+  }
+  return parseVoiceType(process.env.TENCENT_TTS_VOICE_TYPE || process.env.TENCENT_TTS_VOICE_NAME || "");
 }
 
 function tencentTtsRequest(payload) {
@@ -171,13 +177,14 @@ function tencentTtsRequest(payload) {
   });
 }
 
-async function ensureTtsAudio(text) {
+async function ensureTtsAudio(text, options = {}) {
   const normalizedText = String(text || "").trim().replace(/\s+/g, " ");
   if (!normalizedText || normalizedText.length > 80) throw new Error("Invalid TTS text");
+  const lang = options.lang === "zh" ? "zh" : "en";
   const codec = (process.env.TENCENT_TTS_CODEC || "mp3").toLowerCase();
   const ext = codec === "wav" ? "wav" : "mp3";
-  const voiceType = getTencentVoiceType();
-  const filePath = path.join(audioDir, `${safeAudioName(normalizedText, voiceType, ext)}.${ext}`);
+  const voiceType = getTencentVoiceType(lang);
+  const filePath = path.join(audioDir, `${safeAudioName(normalizedText, voiceType, ext, lang)}.${ext}`);
   if (fs.existsSync(filePath)) return { filePath, contentType: ext === "wav" ? "audio/wav" : "audio/mpeg" };
 
   const payload = {
@@ -187,7 +194,7 @@ async function ensureTtsAudio(text) {
     ModelType: 1,
     Speed: 0,
     Volume: 0,
-    PrimaryLanguage: 2,
+    PrimaryLanguage: lang === "zh" ? 1 : 2,
     SampleRate: 16000
   };
   if (voiceType !== undefined) payload.VoiceType = voiceType;
@@ -208,6 +215,7 @@ function initDb() {
       phone TEXT UNIQUE,
       role TEXT NOT NULL DEFAULT 'user',
       status TEXT NOT NULL DEFAULT 'active',
+      password_reset_required INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       last_login_at TEXT
     );
@@ -312,6 +320,10 @@ function initDb() {
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
   `);
+  const userColumns = db.prepare("PRAGMA table_info(users)").all().map((column) => column.name);
+  if (!userColumns.includes("password_reset_required")) {
+    db.exec("ALTER TABLE users ADD COLUMN password_reset_required INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 function ensureAdmin() {
@@ -349,7 +361,8 @@ function publicUser(user) {
     nickname: user.nickname,
     phone: user.phone,
     role: user.role,
-    status: user.status
+    status: user.status,
+    passwordResetRequired: Boolean(user.password_reset_required)
   };
 }
 
@@ -361,6 +374,14 @@ function currentUser(req) {
 function requireAuth(req, res, next) {
   const user = currentUser(req);
   if (!user) return res.status(401).json({ error: "请先登录" });
+  req.user = user;
+  return next();
+}
+
+function requirePasswordReadyPage(req, res, next) {
+  const user = currentUser(req);
+  if (!user) return res.redirect("/login");
+  if (user.password_reset_required) return res.redirect("/reset-password");
   req.user = user;
   return next();
 }
@@ -810,28 +831,28 @@ app.get("/portal.css", (req, res) => res.sendFile(path.join(publicDir, "portal.c
 app.get("/login", (req, res) => res.sendFile(path.join(publicDir, "login.html")));
 app.get("/admin-login", (req, res) => res.sendFile(path.join(publicDir, "admin-login.html")));
 app.get("/register", (req, res) => res.sendFile(path.join(publicDir, "register.html")));
-app.get("/progress", requirePageAuth, (req, res) => res.sendFile(path.join(publicDir, "progress.html")));
+app.get("/reset-password", requirePageAuth, (req, res) => res.sendFile(path.join(publicDir, "reset-password.html")));
+app.get("/progress", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "progress.html")));
 app.get("/admin", requireAdminPage, (req, res) => res.sendFile(path.join(publicDir, "admin.html")));
 
 app.post("/api/auth/register", (req, res) => {
   const phone = normalizePhone(req.body.phone);
   const inviteCode = normalizeInvite(req.body.inviteCode);
-  const username = String(req.body.username || "").trim();
+  const username = phone;
   const password = String(req.body.password || "");
-  const nickname = username;
-  if (!isValidPhone(phone) || !inviteCode || !username || password.length < 6) {
-    return res.status(400).json({ error: "请填写正确手机号、邀请码、用户名和至少6位密码" });
+  const nickname = phone.replace(/^(\d{3})\d{4}(\d{4})$/, "$1****$2");
+  if (!isValidPhone(phone) || !inviteCode || password.length < 6) {
+    return res.status(400).json({ error: "请填写正确手机号、邀请码和至少6位密码" });
   }
   const whitelist = db.prepare("SELECT * FROM phone_whitelist WHERE phone = ?").get(phone);
   if (!whitelist || whitelist.status !== "unused") return res.status(400).json({ error: "手机号不在白名单或邀请码已失效" });
   if (whitelist.invite_hash !== hashInvite(inviteCode)) return res.status(400).json({ error: "邀请码不正确" });
-  if (db.prepare("SELECT id FROM users WHERE username = ?").get(username)) return res.status(409).json({ error: "用户名已被使用" });
   if (db.prepare("SELECT id FROM users WHERE phone = ?").get(phone)) return res.status(409).json({ error: "该手机号已注册" });
 
   const tx = db.transaction(() => {
     const result = db.prepare(`
-      INSERT INTO users (username, password_hash, nickname, phone, role, status, created_at)
-      VALUES (?, ?, ?, ?, 'user', 'active', ?)
+      INSERT INTO users (username, password_hash, nickname, phone, role, status, password_reset_required, created_at)
+      VALUES (?, ?, ?, ?, 'user', 'active', 0, ?)
     `).run(username, bcrypt.hashSync(password, 10), nickname, phone, now());
     db.prepare(`
       UPDATE phone_whitelist
@@ -846,15 +867,30 @@ app.post("/api/auth/register", (req, res) => {
 });
 
 app.post("/api/auth/login", (req, res) => {
-  const username = String(req.body.username || "").trim();
+  const login = String(req.body.phone || req.body.username || "").trim();
+  const phone = normalizePhone(login);
   const password = String(req.body.password || "");
-  const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username);
+  const user = isValidPhone(phone)
+    ? db.prepare("SELECT * FROM users WHERE phone = ?").get(phone)
+    : db.prepare("SELECT * FROM users WHERE username = ?").get(login);
   if (!user || user.status !== "active" || !bcrypt.compareSync(password, user.password_hash)) {
-    return res.status(401).json({ error: "用户名或密码不正确" });
+    return res.status(401).json({ error: "账号或密码不正确" });
   }
   db.prepare("UPDATE users SET last_login_at = ? WHERE id = ?").run(now(), user.id);
   req.session.userId = user.id;
   return res.json({ ok: true, user: publicUser(user) });
+});
+
+app.post("/api/auth/change-password", requireAuth, (req, res) => {
+  const currentPassword = String(req.body.currentPassword || "");
+  const newPassword = String(req.body.newPassword || "");
+  if (newPassword.length < 6) return res.status(400).json({ error: "新密码至少6位" });
+  if (!bcrypt.compareSync(currentPassword, req.user.password_hash)) {
+    return res.status(401).json({ error: "当前密码不正确" });
+  }
+  db.prepare("UPDATE users SET password_hash = ?, password_reset_required = 0 WHERE id = ?")
+    .run(bcrypt.hashSync(newPassword, 10), req.user.id);
+  return res.json({ ok: true, user: publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(req.user.id)) });
 });
 
 app.post("/api/auth/logout", (req, res) => {
@@ -878,10 +914,12 @@ app.post("/api/progress/word", requireAuth, (req, res) => {
 app.get("/api/tts", requireAuth, async (req, res) => {
   try {
     const text = String(req.query.text || "");
+    const lang = String(req.query.lang || "").trim().toLowerCase() === "zh" ? "zh" : "en";
     const requestedVoice = String(req.query.voice || "").trim();
-    const voiceType = getTencentVoiceType();
-    const audio = await ensureTtsAudio(text);
+    const voiceType = getTencentVoiceType(lang);
+    const audio = await ensureTtsAudio(text, { lang });
     res.setHeader("Content-Type", audio.contentType);
+    res.setHeader("X-TTS-Lang", lang);
     res.setHeader("X-TTS-Voice-Type", voiceType === undefined ? "default" : String(voiceType));
     if (requestedVoice) res.setHeader("X-TTS-Requested-Voice", requestedVoice);
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
@@ -963,7 +1001,7 @@ app.get("/api/admin/users", requireAdmin, (req, res) => {
   const safePage = Math.min(page, totalPages);
   const offset = (safePage - 1) * pageSize;
   const users = db.prepare(`
-    SELECT id, username, nickname, phone, role, status, created_at, last_login_at
+    SELECT id, username, nickname, phone, role, status, password_reset_required, created_at, last_login_at
     FROM users ${where}
     ORDER BY created_at DESC
     LIMIT ? OFFSET ?
@@ -982,16 +1020,16 @@ app.patch("/api/admin/users/:id", requireAdmin, (req, res) => {
 
 app.post("/api/admin/users/:id/reset-password", requireAdmin, (req, res) => {
   const id = Number(req.params.id);
-  const user = db.prepare("SELECT id, username, role FROM users WHERE id = ?").get(id);
+  const user = db.prepare("SELECT id, username, phone, role FROM users WHERE id = ?").get(id);
   if (!user) return res.status(404).json({ error: "用户不存在" });
   if (user.role === "admin") return res.status(400).json({ error: "不能在这里重置管理员密码" });
   const password = randomPassword(10);
-  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(bcrypt.hashSync(password, 10), id);
-  return res.json({ ok: true, username: user.username, password });
+  db.prepare("UPDATE users SET password_hash = ?, password_reset_required = 1 WHERE id = ?").run(bcrypt.hashSync(password, 10), id);
+  return res.json({ ok: true, phone: user.phone, username: user.username, password, passwordResetRequired: true });
 });
 
-app.use("/", requirePageAuth, express.static(publicDir, { extensions: ["html"] }));
-app.get("*", requirePageAuth, (req, res) => res.sendFile(path.join(publicDir, "index.html")));
+app.use("/", requirePasswordReadyPage, express.static(publicDir, { extensions: ["html"] }));
+app.get("*", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "index.html")));
 
 app.listen(port, () => {
   console.log(`Minecraft English Reader listening on http://127.0.0.1:${port}`);

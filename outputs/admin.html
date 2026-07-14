@@ -146,8 +146,8 @@
       document.querySelector("#users").innerHTML = data.items.map((user) => `
         <div class="row">
           <div>
-            <strong>${user.username}</strong>
-            <div class="muted">${user.phone || "无手机号"} · ${user.role} · ${user.status} · 掌握 ${user.progress.masteredWords}/${user.progress.totalWords} · 错题 ${user.progress.reviewCount}</div>
+            <strong>${user.phone || user.username}</strong>
+            <div class="muted">${user.role} · ${user.status}${user.password_reset_required ? " · 待设置新密码" : ""} · 掌握 ${user.progress.masteredWords}/${user.progress.totalWords} · 错题 ${user.progress.reviewCount}</div>
           </div>
           ${user.role !== "admin" ? `
             <div class="actions">
@@ -212,10 +212,10 @@
         }
         if (resetButton) {
           const user = userItems.find((item) => String(item.id) === resetButton.dataset.resetUser);
-          if (!confirm(`确定重置 ${user?.username || "该用户"} 的密码吗？`)) return;
+          if (!confirm(`确定重置 ${user?.phone || user?.username || "该用户"} 的密码吗？`)) return;
           const data = await api(`/api/admin/users/${resetButton.dataset.resetUser}/reset-password`, { method: "POST", body: "{}" });
-          await copyText(`账号：${data.username}\n新密码：${data.password}`);
-          message.textContent = `已重置 ${data.username} 的密码，新密码已复制`;
+          await copyText(`登录地址：${location.origin}/login\n手机号：${data.phone || data.username}\n临时密码：${data.password}\n请登录后设置新密码。`);
+          message.textContent = `已重置 ${data.phone || data.username} 的密码，临时密码已复制`;
         }
       } catch (error) {
         message.textContent = error.message;
