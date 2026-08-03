@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Chinese Progress - Minecraft Chinese Reader</title>
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="panel wide">
+      <div class="top">
+        <div>
+          <h1>My Chinese Progress</h1>
+          <p id="userLine">Loading...</p>
+        </div>
+        <a href="/chinese">Back to Chinese Reader</a>
+      </div>
+      <div class="grid" id="stats"></div>
+      <h2>Theme Progress</h2>
+      <div class="list" id="themes"></div>
+      <p class="notice">Unofficial learning tool. Not affiliated with Mojang, Microsoft, or the official Minecraft brand.</p>
+    </section>
+  </main>
+  <script>
+    async function api(url) {
+      const response = await fetch(url);
+      if (response.status === 401) {
+        location.href = "/login?next=%2Fchinese%2Fprogress";
+        throw new Error("Please sign in");
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to load progress");
+      return data;
+    }
+
+    async function init() {
+      try {
+        const [me, data] = await Promise.all([api("/api/me"), api("/api/chinese/progress")]);
+        document.querySelector("#userLine").textContent = me.user.phone || me.user.username;
+        document.querySelector("#stats").innerHTML = `
+          <div class="stat"><strong>${data.totals.studiedWords}</strong>Words studied</div>
+          <div class="stat"><strong>${data.totals.masteredWords}</strong>Words mastered</div>
+          <div class="stat"><strong>${data.totals.reviewCount}</strong>Words to review</div>
+          <div class="stat"><strong>${data.totals.totalWords}</strong>Total words</div>
+        `;
+        document.querySelector("#themes").innerHTML = data.themes.map((theme) => `
+          <div class="row">
+            <div>
+              <strong>${theme.title}</strong>
+              <div class="muted">${theme.subtitle} · Completion ${theme.completion}% · Accuracy ${theme.accuracy}% · Reviews ${theme.reviewCount}</div>
+            </div>
+            <div>${theme.masteredWords}/${theme.totalWords}</div>
+          </div>
+        `).join("");
+      } catch (error) {
+        document.querySelector("#userLine").textContent = error.message;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -36,6 +36,10 @@
       </div>
 
       <h2>用户与学习统计</h2>
+      <div class="course-switch" aria-label="统计课程">
+        <button class="active" type="button" data-course="english">English Course</button>
+        <button type="button" data-course="chinese">Chinese Course</button>
+      </div>
       <div class="toolbar">
         <label>按手机号搜索<input id="userPhoneSearch" inputmode="numeric" autocomplete="off" maxlength="11" placeholder="输入手机号或部分号码"></label>
         <button class="secondary" id="userSearchBtn" type="button">搜索</button>
@@ -67,6 +71,7 @@
     let userItems = [];
     let usersPage = 1;
     let usersTotalPages = 1;
+    let userCourse = "english";
     const listPageSize = 10;
 
     async function api(url, options = {}) {
@@ -112,7 +117,8 @@
     async function loadWhitelist(page = whitelistPage) {
       const params = new URLSearchParams({
         page: String(page),
-        pageSize: String(listPageSize)
+        pageSize: String(listPageSize),
+        course: userCourse
       });
       const data = await api(`/api/admin/whitelist?${params}`);
       whitelistItems = data.items;
@@ -147,7 +153,7 @@
         <div class="row">
           <div>
             <strong>${user.phone || user.username}</strong>
-            <div class="muted">${user.role} · ${user.status}${user.password_reset_required ? " · 待设置新密码" : ""} · 掌握 ${user.progress.masteredWords}/${user.progress.totalWords} · 错题 ${user.progress.reviewCount}</div>
+            <div class="muted">${user.role} · ${user.status}${user.password_reset_required ? " · 待设置新密码" : ""} · ${userCourse === "chinese" ? "中文课程" : "英文课程"} · 掌握 ${user.progress.masteredWords}/${user.progress.totalWords} · 错题 ${user.progress.reviewCount}</div>
           </div>
           ${user.role !== "admin" ? `
             <div class="actions">
@@ -226,6 +232,13 @@
       userPhoneSearch.value = userPhoneSearch.value.replace(/\D/g, "").slice(0, 11);
     });
     userSearchBtn.addEventListener("click", () => loadUsers(1));
+    document.querySelectorAll("[data-course]").forEach((button) => {
+      button.addEventListener("click", () => {
+        userCourse = button.dataset.course;
+        document.querySelectorAll("[data-course]").forEach((node) => node.classList.toggle("active", node === button));
+        loadUsers(1);
+      });
+    });
     userPhoneSearch.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();

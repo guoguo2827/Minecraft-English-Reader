@@ -18,7 +18,7 @@
         <label>确认密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required></label>
         <button type="submit">注册并登录</button>
       </form>
-      <p class="portal-link">已有账号？<a href="/login">去登录</a></p>
+      <p class="portal-link">已有账号？<a id="loginLink" href="/login">去登录</a></p>
       <p class="message" id="message"></p>
       <p class="notice">邀请码注册成功后会立即失效，不能重复使用。</p>
     </section>
@@ -26,6 +26,9 @@
   <script>
     const form = document.querySelector("#registerForm");
     const message = document.querySelector("#message");
+    const requestedNext = new URLSearchParams(location.search).get("next") || "";
+    const nextPath = /^\/chinese(?:\/|$)/.test(requestedNext) ? requestedNext : "/";
+    if (nextPath !== "/") document.querySelector("#loginLink").href = `/login?next=${encodeURIComponent(nextPath)}`;
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       message.textContent = "正在注册...";
@@ -45,7 +48,7 @@
         message.textContent = data.error || "注册失败";
         return;
       }
-      location.href = "/";
+      location.href = nextPath;
     });
 
     form.elements.phone.addEventListener("input", () => {

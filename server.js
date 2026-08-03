@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const https = require("https");
 const path = require("path");
+const vm = require("vm");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const express = require("express");
 const session = require("express-session");
@@ -27,6 +28,16 @@ const rewardLevels = [
   { level: 6, minExp: 1700, title: "绿宝石大师", gemKey: "emerald" },
   { level: 7, minExp: 2500, title: "钻石勇士", gemKey: "diamond" },
   { level: 8, minExp: 3600, title: "下界合金传奇", gemKey: "netherite" }
+];
+const chineseRewardLevels = [
+  { level: 1, minExp: 0, title: "Coal Beginner", gemKey: "coal" },
+  { level: 2, minExp: 120, title: "Iron Learner", gemKey: "iron" },
+  { level: 3, minExp: 320, title: "Gold Explorer", gemKey: "gold" },
+  { level: 4, minExp: 650, title: "Redstone Speaker", gemKey: "redstone" },
+  { level: 5, minExp: 1100, title: "Lapis Scholar", gemKey: "lapis" },
+  { level: 6, minExp: 1700, title: "Emerald Communicator", gemKey: "emerald" },
+  { level: 7, minExp: 2500, title: "Diamond Master", gemKey: "diamond" },
+  { level: 8, minExp: 3600, title: "Netherite Legend", gemKey: "netherite" }
 ];
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -98,7 +109,7 @@ function parseVoiceType(raw) {
 
 function getTencentVoiceType(lang = "en") {
   if (lang === "zh") {
-    return parseVoiceType(process.env.TENCENT_TTS_ZH_VOICE_TYPE || "");
+    return parseVoiceType(process.env.TENCENT_TTS_ZH_VOICE_TYPE || "501002");
   }
   return parseVoiceType(process.env.TENCENT_TTS_VOICE_TYPE || process.env.TENCENT_TTS_VOICE_NAME || "");
 }
@@ -319,6 +330,90 @@ function initDb() {
       UNIQUE(user_id, theme_id),
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
+
+    CREATE TABLE IF NOT EXISTS chinese_word_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      theme_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      read_count INTEGER NOT NULL DEFAULT 0,
+      answer_count INTEGER NOT NULL DEFAULT 0,
+      correct_count INTEGER NOT NULL DEFAULT 0,
+      wrong_count INTEGER NOT NULL DEFAULT 0,
+      consecutive_correct INTEGER NOT NULL DEFAULT 0,
+      mastery_status TEXT NOT NULL DEFAULT 'new',
+      last_studied_at TEXT,
+      UNIQUE(user_id, theme_id, item_id),
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS chinese_review_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      theme_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      due_question_no INTEGER NOT NULL,
+      consecutive_fix_count INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(user_id, theme_id, item_id),
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS chinese_theme_quiz_state (
+      user_id INTEGER NOT NULL,
+      theme_id TEXT NOT NULL,
+      question_no INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(user_id, theme_id),
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS chinese_study_sessions (
+      user_id INTEGER NOT NULL,
+      study_date TEXT NOT NULL,
+      read_count INTEGER NOT NULL DEFAULT 0,
+      answer_count INTEGER NOT NULL DEFAULT 0,
+      correct_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(user_id, study_date),
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS chinese_user_rewards (
+      user_id INTEGER PRIMARY KEY,
+      total_exp INTEGER NOT NULL DEFAULT 0,
+      today_exp INTEGER NOT NULL DEFAULT 0,
+      reward_date TEXT NOT NULL,
+      streak_correct INTEGER NOT NULL DEFAULT 0,
+      fixed_reviews INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS chinese_reward_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      exp INTEGER NOT NULL DEFAULT 0,
+      label TEXT NOT NULL DEFAULT '',
+      theme_id TEXT DEFAULT '',
+      item_id TEXT DEFAULT '',
+      unique_key TEXT UNIQUE,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS chinese_theme_badges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      theme_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(user_id, theme_id),
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
   `);
   const userColumns = db.prepare("PRAGMA table_info(users)").all().map((column) => column.name);
   if (!userColumns.includes("password_reset_required")) {
@@ -350,8 +445,29 @@ function loadThemes() {
   return Function(script)();
 }
 
+function loadChineseThemes() {
+  const source = fs.readFileSync(path.join(publicDir, "core-words-data.js"), "utf8");
+  const sandbox = { window: {} };
+  vm.runInNewContext(source, sandbox, { filename: "core-words-data.js" });
+  const sourceThemes = sandbox.window.CORE_WORD_THEMES;
+  if (!Array.isArray(sourceThemes)) throw new Error("Cannot find Core Words themes");
+  return sourceThemes.map((theme) => ({
+    id: String(theme.id),
+    title: String(theme.title),
+    subtitle: String(theme.subtitle || `${theme.items.length} words`),
+    items: theme.items.map((item) => ({
+      id: `${theme.id}:${String(item.word).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
+      english: String(item.word),
+      chinese: String(item.cn),
+      image: `/${String(item.image).replace(/^\/+/, "")}`
+    }))
+  }));
+}
+
 const themes = loadThemes();
 const themeMap = new Map(themes.map((theme) => [theme.id, theme]));
+const chineseThemes = loadChineseThemes();
+const chineseThemeMap = new Map(chineseThemes.map((theme) => [theme.id, theme]));
 
 function publicUser(user) {
   if (!user) return null;
@@ -380,8 +496,10 @@ function requireAuth(req, res, next) {
 
 function requirePasswordReadyPage(req, res, next) {
   const user = currentUser(req);
-  if (!user) return res.redirect("/login");
-  if (user.password_reset_required) return res.redirect("/reset-password");
+  const returnPath = req.originalUrl.startsWith("/chinese") ? req.originalUrl : "";
+  const suffix = returnPath ? `?next=${encodeURIComponent(returnPath)}` : "";
+  if (!user) return res.redirect(`/login${suffix}`);
+  if (user.password_reset_required) return res.redirect(`/reset-password${suffix}`);
   req.user = user;
   return next();
 }
@@ -809,6 +927,357 @@ function rewardAnswer(userId, theme, word, correct, hadActiveReview, fixedReview
   return result;
 }
 
+function touchChineseSession(userId, kind, correct) {
+  const date = todayKey();
+  db.prepare(`
+    INSERT INTO chinese_study_sessions (user_id, study_date, read_count, answer_count, correct_count, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, study_date)
+    DO UPDATE SET read_count = read_count + excluded.read_count,
+                  answer_count = answer_count + excluded.answer_count,
+                  correct_count = correct_count + excluded.correct_count,
+                  updated_at = excluded.updated_at
+  `).run(userId, date, kind === "read" ? 1 : 0, kind === "answer" ? 1 : 0, correct ? 1 : 0, now());
+}
+
+function upsertChineseReadProgress(userId, themeId, itemId) {
+  const theme = chineseThemeMap.get(themeId);
+  if (!theme || !theme.items.some((item) => item.id === itemId)) throw new Error("Unknown Chinese course item");
+  db.prepare(`
+    INSERT INTO chinese_word_progress (user_id, theme_id, item_id, read_count, last_studied_at)
+    VALUES (?, ?, ?, 1, ?)
+    ON CONFLICT(user_id, theme_id, item_id)
+    DO UPDATE SET read_count = read_count + 1, last_studied_at = excluded.last_studied_at
+  `).run(userId, themeId, itemId, now());
+  touchChineseSession(userId, "read", false);
+}
+
+function getChineseQuizState(userId, themeId) {
+  const existing = db.prepare("SELECT * FROM chinese_theme_quiz_state WHERE user_id = ? AND theme_id = ?").get(userId, themeId);
+  if (existing) return existing;
+  db.prepare("INSERT INTO chinese_theme_quiz_state (user_id, theme_id, question_no, updated_at) VALUES (?, ?, 0, ?)")
+    .run(userId, themeId, now());
+  return { user_id: userId, theme_id: themeId, question_no: 0 };
+}
+
+function scheduleChineseReview(userId, themeId, itemId, questionNo, consecutiveFixCount) {
+  const due = questionNo + crypto.randomInt(6, 11);
+  db.prepare(`
+    INSERT INTO chinese_review_queue (user_id, theme_id, item_id, due_question_no, consecutive_fix_count, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+    ON CONFLICT(user_id, theme_id, item_id)
+    DO UPDATE SET due_question_no = excluded.due_question_no,
+                  consecutive_fix_count = excluded.consecutive_fix_count,
+                  status = 'active',
+                  updated_at = excluded.updated_at
+  `).run(userId, themeId, itemId, due, consecutiveFixCount, now(), now());
+}
+
+function chooseChineseQuizItem(userId, themeId) {
+  const theme = chineseThemeMap.get(themeId);
+  if (!theme) throw new Error("Unknown Chinese course theme");
+  const state = getChineseQuizState(userId, themeId);
+  const questionNo = state.question_no + 1;
+  db.prepare("UPDATE chinese_theme_quiz_state SET question_no = ?, updated_at = ? WHERE user_id = ? AND theme_id = ?")
+    .run(questionNo, now(), userId, themeId);
+
+  const reviewItems = db.prepare(`
+    SELECT item_id, due_question_no FROM chinese_review_queue
+    WHERE user_id = ? AND theme_id = ? AND status = 'active'
+  `).all(userId, themeId);
+  const dueIds = new Set(reviewItems.filter((item) => item.due_question_no <= questionNo).map((item) => item.item_id));
+  const pendingIds = new Set(reviewItems.filter((item) => item.due_question_no > questionNo).map((item) => item.item_id));
+  let candidates = dueIds.size
+    ? theme.items.filter((item) => dueIds.has(item.id))
+    : theme.items.filter((item) => !pendingIds.has(item.id));
+  if (!candidates.length) candidates = theme.items;
+  const item = candidates[crypto.randomInt(candidates.length)];
+  const seenChinese = new Set([item.chinese]);
+  const wrongPool = shuffle(theme.items.filter((candidate) => candidate.id !== item.id)).filter((candidate) => {
+    if (seenChinese.has(candidate.chinese)) return false;
+    seenChinese.add(candidate.chinese);
+    return true;
+  }).slice(0, 3);
+  return {
+    questionNo,
+    themeId,
+    itemId: item.id,
+    english: item.english,
+    image: item.image,
+    speechText: item.chinese,
+    options: shuffle([item, ...wrongPool]).map((candidate) => candidate.chinese)
+  };
+}
+
+function chineseLevelInfo(totalExp) {
+  let current = chineseRewardLevels[0];
+  for (const level of chineseRewardLevels) {
+    if (totalExp >= level.minExp) current = level;
+  }
+  const next = chineseRewardLevels.find((level) => level.minExp > current.minExp);
+  const nextMinExp = next ? next.minExp : current.minExp + 500;
+  const levelExp = Math.max(0, totalExp - current.minExp);
+  const levelNeed = Math.max(1, nextMinExp - current.minExp);
+  return {
+    level: current.level,
+    title: current.title,
+    gemKey: current.gemKey,
+    levelExp,
+    levelNeed,
+    progressPercent: Math.min(100, Math.round((levelExp / levelNeed) * 100))
+  };
+}
+
+function ensureChineseRewardRow(userId) {
+  const date = todayKey();
+  let row = db.prepare("SELECT * FROM chinese_user_rewards WHERE user_id = ?").get(userId);
+  if (!row) {
+    db.prepare("INSERT INTO chinese_user_rewards (user_id, reward_date, updated_at) VALUES (?, ?, ?)").run(userId, date, now());
+    row = db.prepare("SELECT * FROM chinese_user_rewards WHERE user_id = ?").get(userId);
+  }
+  if (row.reward_date !== date) {
+    db.prepare("UPDATE chinese_user_rewards SET today_exp = 0, reward_date = ?, updated_at = ? WHERE user_id = ?")
+      .run(date, now(), userId);
+    row = db.prepare("SELECT * FROM chinese_user_rewards WHERE user_id = ?").get(userId);
+  }
+  return row;
+}
+
+function chineseRewardSummary(userId) {
+  const row = ensureChineseRewardRow(userId);
+  const badges = db.prepare(`
+    SELECT theme_id AS themeId, title, created_at AS createdAt
+    FROM chinese_theme_badges WHERE user_id = ? ORDER BY created_at DESC
+  `).all(userId);
+  const recentEvents = db.prepare(`
+    SELECT event_type AS type, exp, label, theme_id AS themeId, item_id AS itemId, created_at AS createdAt
+    FROM chinese_reward_events WHERE user_id = ? ORDER BY id DESC LIMIT 5
+  `).all(userId);
+  return {
+    ...chineseLevelInfo(row.total_exp),
+    totalExp: row.total_exp,
+    todayExp: row.today_exp,
+    streakCorrect: row.streak_correct,
+    fixedReviews: row.fixed_reviews,
+    badges,
+    recentEvents
+  };
+}
+
+function chineseGrantReward(userId, event) {
+  const row = ensureChineseRewardRow(userId);
+  const beforeLevel = chineseLevelInfo(row.total_exp).level;
+  const requestedExp = Math.max(0, Number(event.exp || 0));
+  const grantedExp = Math.min(requestedExp, Math.max(0, dailyExpLimit - row.today_exp));
+  try {
+    db.prepare(`
+      INSERT INTO chinese_reward_events (user_id, event_type, exp, label, theme_id, item_id, unique_key, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      userId,
+      event.type,
+      grantedExp,
+      requestedExp > 0 && grantedExp === 0 ? `${event.label || "Reward"} (daily EXP limit reached)` : (event.label || ""),
+      event.themeId || "",
+      event.itemId || "",
+      event.uniqueKey || null,
+      now()
+    );
+  } catch (error) {
+    if (!event.uniqueKey || !String(error.message || "").includes("UNIQUE")) throw error;
+    return { events: [], state: chineseRewardSummary(userId) };
+  }
+
+  if (grantedExp > 0) {
+    db.prepare(`
+      UPDATE chinese_user_rewards
+      SET total_exp = total_exp + ?, today_exp = today_exp + ?, updated_at = ?
+      WHERE user_id = ?
+    `).run(grantedExp, grantedExp, now(), userId);
+  }
+  const state = chineseRewardSummary(userId);
+  const events = [{ type: event.type, exp: grantedExp, label: event.label || "", themeId: event.themeId || "", itemId: event.itemId || "" }];
+  if (state.level > beforeLevel) {
+    events.push({ type: "level_up", exp: 0, label: `Level up: ${state.title}`, level: state.level, gemKey: state.gemKey });
+  }
+  return { events, state };
+}
+
+function mergeChineseRewardResult(target, rewardResult) {
+  target.rewardEvents.push(...(rewardResult?.events || []));
+  if (rewardResult?.state) target.rewardState = rewardResult.state;
+  return target;
+}
+
+function maybeGrantChineseThemeBadge(userId, theme) {
+  const mastered = db.prepare(`
+    SELECT COUNT(*) AS count FROM chinese_word_progress
+    WHERE user_id = ? AND theme_id = ? AND mastery_status = 'mastered'
+  `).get(userId, theme.id).count;
+  if (mastered < theme.items.length) return { events: [], state: chineseRewardSummary(userId) };
+  try {
+    db.prepare("INSERT INTO chinese_theme_badges (user_id, theme_id, title, created_at) VALUES (?, ?, ?, ?)")
+      .run(userId, theme.id, theme.title, now());
+  } catch (error) {
+    if (!String(error.message || "").includes("UNIQUE")) throw error;
+    return { events: [], state: chineseRewardSummary(userId) };
+  }
+  return chineseGrantReward(userId, {
+    type: "theme_badge",
+    exp: 30,
+    label: `Theme completed: ${theme.title}`,
+    themeId: theme.id,
+    uniqueKey: `theme:${userId}:${theme.id}`
+  });
+}
+
+function chineseRewardRead(userId, themeId, itemId) {
+  return chineseGrantReward(userId, {
+    type: "read",
+    exp: 0,
+    label: "Reading practice",
+    themeId,
+    itemId,
+    uniqueKey: `read:${userId}:${todayKey()}:${themeId}:${itemId}`
+  });
+}
+
+function chineseRewardAnswer(userId, theme, itemId, correct, hadActiveReview, fixedReview) {
+  const result = { rewardEvents: [], rewardState: chineseRewardSummary(userId) };
+  const row = ensureChineseRewardRow(userId);
+  if (!correct) {
+    db.prepare("UPDATE chinese_user_rewards SET streak_correct = 0, updated_at = ? WHERE user_id = ?").run(now(), userId);
+    result.rewardState = chineseRewardSummary(userId);
+    return result;
+  }
+
+  const nextStreak = row.streak_correct + 1;
+  db.prepare("UPDATE chinese_user_rewards SET streak_correct = ?, updated_at = ? WHERE user_id = ?").run(nextStreak, now(), userId);
+  mergeChineseRewardResult(result, chineseGrantReward(userId, {
+    type: hadActiveReview ? "review_correct" : "correct",
+    exp: hadActiveReview ? 4 : 5,
+    label: hadActiveReview ? "Review correct +4" : "Correct answer +5",
+    themeId: theme.id,
+    itemId
+  }));
+  if (nextStreak === 3 || nextStreak === 5 || nextStreak === 10 || (nextStreak > 10 && nextStreak % 10 === 0)) {
+    const bonus = nextStreak >= 10 ? 8 : nextStreak === 5 ? 5 : 3;
+    mergeChineseRewardResult(result, chineseGrantReward(userId, {
+      type: "streak",
+      exp: bonus,
+      label: `Streak x${nextStreak} +${bonus}`,
+      themeId: theme.id,
+      itemId
+    }));
+  }
+  if (fixedReview) {
+    db.prepare("UPDATE chinese_user_rewards SET fixed_reviews = fixed_reviews + 1, updated_at = ? WHERE user_id = ?").run(now(), userId);
+    mergeChineseRewardResult(result, chineseGrantReward(userId, {
+      type: "review_fixed",
+      exp: 10,
+      label: "Review fixed +10",
+      themeId: theme.id,
+      itemId
+    }));
+  }
+  mergeChineseRewardResult(result, maybeGrantChineseThemeBadge(userId, theme));
+  result.rewardState = chineseRewardSummary(userId);
+  return result;
+}
+
+function answerChineseQuiz(userId, themeId, itemId, selectedChinese) {
+  const theme = chineseThemeMap.get(themeId);
+  if (!theme) throw new Error("Unknown Chinese course theme");
+  const item = theme.items.find((candidate) => candidate.id === itemId);
+  if (!item) throw new Error("Unknown Chinese course item");
+  const state = getChineseQuizState(userId, themeId);
+  const correct = item.chinese === selectedChinese;
+  const queue = db.prepare("SELECT * FROM chinese_review_queue WHERE user_id = ? AND theme_id = ? AND item_id = ?")
+    .get(userId, themeId, itemId);
+  const hadActiveReview = Boolean(queue && queue.status === "active");
+  let fixedReview = false;
+  const existingProgress = db.prepare(`
+    SELECT consecutive_correct FROM chinese_word_progress
+    WHERE user_id = ? AND theme_id = ? AND item_id = ?
+  `).get(userId, themeId, itemId);
+  const consecutiveCorrect = correct ? (existingProgress?.consecutive_correct || 0) + 1 : 0;
+
+  db.prepare(`
+    INSERT INTO chinese_word_progress (
+      user_id, theme_id, item_id, answer_count, correct_count, wrong_count,
+      consecutive_correct, mastery_status, last_studied_at
+    ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, theme_id, item_id)
+    DO UPDATE SET answer_count = answer_count + 1,
+                  correct_count = correct_count + excluded.correct_count,
+                  wrong_count = wrong_count + excluded.wrong_count,
+                  consecutive_correct = excluded.consecutive_correct,
+                  mastery_status = excluded.mastery_status,
+                  last_studied_at = excluded.last_studied_at
+  `).run(
+    userId,
+    themeId,
+    itemId,
+    correct ? 1 : 0,
+    correct ? 0 : 1,
+    consecutiveCorrect,
+    correct ? (consecutiveCorrect >= 2 ? "mastered" : "learning") : "review",
+    now()
+  );
+
+  if (!correct) {
+    scheduleChineseReview(userId, themeId, itemId, state.question_no, 0);
+  } else if (hadActiveReview) {
+    const fixedCount = queue.consecutive_fix_count + 1;
+    if (fixedCount >= 2) {
+      db.prepare("UPDATE chinese_review_queue SET status = 'fixed', consecutive_fix_count = ?, updated_at = ? WHERE id = ?")
+        .run(fixedCount, now(), queue.id);
+      fixedReview = true;
+    } else {
+      scheduleChineseReview(userId, themeId, itemId, state.question_no, fixedCount);
+    }
+  }
+  touchChineseSession(userId, "answer", correct);
+  return {
+    correct,
+    correctChinese: item.chinese,
+    ...chineseRewardAnswer(userId, theme, itemId, correct, hadActiveReview, fixedReview)
+  };
+}
+
+function chineseProgressSummary(userId) {
+  const progress = db.prepare("SELECT * FROM chinese_word_progress WHERE user_id = ?").all(userId);
+  const queue = db.prepare("SELECT * FROM chinese_review_queue WHERE user_id = ? AND status = 'active'").all(userId);
+  const byKey = new Map(progress.map((item) => [`${item.theme_id}:${item.item_id}`, item]));
+  const activeReview = new Set(queue.map((item) => `${item.theme_id}:${item.item_id}`));
+  const themeSummaries = chineseThemes.map((theme) => {
+    const words = theme.items.map((item) => byKey.get(`${theme.id}:${item.id}`)).filter(Boolean);
+    const mastered = words.filter((item) => item.mastery_status === "mastered").length;
+    const answers = words.reduce((sum, item) => sum + item.answer_count, 0);
+    const correct = words.reduce((sum, item) => sum + item.correct_count, 0);
+    const reviewCount = theme.items.filter((item) => activeReview.has(`${theme.id}:${item.id}`)).length;
+    return {
+      id: theme.id,
+      title: theme.title,
+      subtitle: theme.subtitle,
+      totalWords: theme.items.length,
+      studiedWords: words.length,
+      masteredWords: mastered,
+      reviewCount,
+      accuracy: answers ? Math.round((correct / answers) * 100) : 0,
+      completion: Math.round((mastered / theme.items.length) * 100)
+    };
+  });
+  const totals = themeSummaries.reduce((result, theme) => {
+    result.totalWords += theme.totalWords;
+    result.studiedWords += theme.studiedWords;
+    result.masteredWords += theme.masteredWords;
+    result.reviewCount += theme.reviewCount;
+    return result;
+  }, { totalWords: 0, studiedWords: 0, masteredWords: 0, reviewCount: 0 });
+  return { totals, themes: themeSummaries };
+}
+
 initDb();
 ensureAdmin();
 
@@ -833,6 +1302,8 @@ app.get("/admin-login", (req, res) => res.sendFile(path.join(publicDir, "admin-l
 app.get("/register", (req, res) => res.sendFile(path.join(publicDir, "register.html")));
 app.get("/reset-password", requirePageAuth, (req, res) => res.sendFile(path.join(publicDir, "reset-password.html")));
 app.get("/progress", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "progress.html")));
+app.get("/chinese", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "core-words-cn.html")));
+app.get("/chinese/progress", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "chinese-progress.html")));
 app.get("/admin", requireAdminPage, (req, res) => res.sendFile(path.join(publicDir, "admin.html")));
 
 app.post("/api/auth/register", (req, res) => {
@@ -901,6 +1372,43 @@ app.get("/api/me", requireAuth, (req, res) => res.json({ user: publicUser(req.us
 app.get("/api/themes", requireAuth, (req, res) => res.json({ themes }));
 app.get("/api/progress", requireAuth, (req, res) => res.json(progressSummary(req.user.id)));
 app.get("/api/rewards", requireAuth, (req, res) => res.json({ rewardState: rewardSummary(req.user.id) }));
+
+app.get("/api/chinese/themes", requireAuth, (req, res) => res.json({ themes: chineseThemes }));
+app.get("/api/chinese/progress", requireAuth, (req, res) => res.json(chineseProgressSummary(req.user.id)));
+app.get("/api/chinese/rewards", requireAuth, (req, res) => res.json({ rewardState: chineseRewardSummary(req.user.id) }));
+
+app.post("/api/chinese/progress/word", requireAuth, (req, res) => {
+  try {
+    const themeId = String(req.body.themeId || "");
+    const itemId = String(req.body.itemId || "");
+    upsertChineseReadProgress(req.user.id, themeId, itemId);
+    const reward = chineseRewardRead(req.user.id, themeId, itemId);
+    return res.json({ ok: true, rewardEvents: reward.events, rewardState: reward.state });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.post("/api/chinese/quiz/next", requireAuth, (req, res) => {
+  try {
+    return res.json(chooseChineseQuizItem(req.user.id, String(req.body.themeId || "")));
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.post("/api/chinese/quiz/answer", requireAuth, (req, res) => {
+  try {
+    return res.json(answerChineseQuiz(
+      req.user.id,
+      String(req.body.themeId || ""),
+      String(req.body.itemId || ""),
+      String(req.body.selectedChinese || "")
+    ));
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
 
 app.post("/api/progress/word", requireAuth, (req, res) => {
   const themeId = String(req.body.themeId || "");
@@ -1006,8 +1514,12 @@ app.get("/api/admin/users", requireAdmin, (req, res) => {
     ORDER BY created_at DESC
     LIMIT ? OFFSET ?
   `).all(...values, pageSize, offset);
-  const items = users.map((user) => ({ ...user, progress: progressSummary(user.id).totals }));
-  return res.json({ items, page: safePage, pageSize, total, totalPages });
+  const course = req.query.course === "chinese" ? "chinese" : "english";
+  const items = users.map((user) => ({
+    ...user,
+    progress: course === "chinese" ? chineseProgressSummary(user.id).totals : progressSummary(user.id).totals
+  }));
+  return res.json({ items, page: safePage, pageSize, total, totalPages, course });
 });
 
 app.patch("/api/admin/users/:id", requireAdmin, (req, res) => {

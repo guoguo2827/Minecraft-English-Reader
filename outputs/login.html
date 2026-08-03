@@ -17,7 +17,7 @@
         <label class="check-line"><input name="remember" type="checkbox">记住账号密码</label>
         <button type="submit">登录</button>
       </form>
-      <p class="portal-link">第一次使用？<a href="/register">用邀请码注册</a></p>
+      <p class="portal-link">第一次使用？<a id="registerLink" href="/register">用邀请码注册</a></p>
       <p class="portal-link">忘记密码？请联系管理员重置，拿到临时密码后登录并设置新密码。</p>
       <p class="message" id="message"></p>
       <p class="notice">非官方学习工具，与 Mojang、Microsoft、Minecraft 官方无关联。</p>
@@ -26,7 +26,11 @@
   <script>
     const form = document.querySelector("#loginForm");
     const message = document.querySelector("#message");
+    const registerLink = document.querySelector("#registerLink");
     const rememberKey = "minecraft-reader-login";
+    const requestedNext = new URLSearchParams(location.search).get("next") || "";
+    const nextPath = /^\/chinese(?:\/|$)/.test(requestedNext) ? requestedNext : "/";
+    if (nextPath !== "/") registerLink.href = `/register?next=${encodeURIComponent(nextPath)}`;
 
     function loadRememberedLogin() {
       let saved = null;
@@ -68,7 +72,9 @@
         return;
       }
       saveRememberedLogin(body);
-      location.href = data.user?.passwordResetRequired ? "/reset-password" : "/";
+      location.href = data.user?.passwordResetRequired
+        ? `/reset-password?next=${encodeURIComponent(nextPath)}`
+        : nextPath;
     });
 
     form.elements.phone.addEventListener("input", () => {
