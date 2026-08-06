@@ -260,7 +260,7 @@
           <div class="admin-stat"><span>课程完成率</span><strong>${totals.completion}%</strong></div>
           <div class="admin-stat"><span>答题正确率</span><strong>${totals.accuracy}%</strong></div>
           <div class="admin-stat"><span>待复习错题</span><strong>${totals.reviewCount}</strong></div>
-          <div class="admin-stat"><span>奖励等级</span><strong>Lv${data.reward.level}</strong><small>${escapeHtml(data.reward.title)} · ${data.reward.totalExp} EXP</small></div>
+          <div class="admin-stat"><span>奖励等级</span><strong>Lv${data.reward.level}</strong><small>${escapeHtml(data.reward.title)} · ${data.reward.totalEmeralds ?? data.reward.totalExp ?? 0} ${escapeHtml(data.reward.currencyLabel || "绿宝石")}</small></div>
         </div>
         <div class="theme-progress-list">
           ${data.progress.themes.map((theme) => `

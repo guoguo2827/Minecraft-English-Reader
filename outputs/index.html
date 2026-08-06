@@ -352,6 +352,18 @@
       font-weight: 900;
     }
 
+    .reward-exp::before {
+      content: "";
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 7px;
+      border: 2px solid #b9ffd0;
+      background: #27b85a;
+      box-shadow: inset 2px 2px 0 #74f29a, 0 0 7px rgba(76, 255, 137, .7);
+      transform: rotate(45deg);
+    }
+
     .reward-bar {
       position: relative;
       z-index: 1;
@@ -1287,11 +1299,11 @@
                 <div class="gem-stage" id="rewardGem" aria-hidden="true"></div>
                 <div class="reward-copy">
                   <div class="reward-kicker-row">
-                    <p class="reward-kicker" id="rewardKicker">我的宝石等级</p>
+                    <p class="reward-kicker" id="rewardKicker">绿宝石奖励</p>
                     <button class="reward-rules-button" id="rewardRulesBtn" type="button" aria-haspopup="dialog">奖励规则</button>
                   </div>
                   <h3 class="reward-title" id="rewardTitle">Lv1 煤炭新手</h3>
-                  <p class="reward-exp" id="rewardExp">0 / 120 EXP</p>
+                  <p class="reward-exp" id="rewardExp">0 / 120 绿宝石</p>
                 </div>
               </div>
               <div class="reward-bar" aria-hidden="true"><div class="reward-fill" id="rewardFill"></div></div>
@@ -1332,30 +1344,30 @@
       <div class="reward-rules-head">
         <div>
           <span class="quiz-label">宝石等级系统</span>
-          <h2 id="rewardRulesTitle">怎样获得 EXP</h2>
+          <h2 id="rewardRulesTitle">怎样获得绿宝石</h2>
         </div>
         <button class="reward-rules-close" type="button" data-close-reward-rules aria-label="关闭">×</button>
       </div>
       <div class="reward-rule-grid">
-        <div class="reward-rule"><strong>普通答对 +5</strong><span>每次正确回答获得经验。</span></div>
-        <div class="reward-rule"><strong>错题复现答对 +4</strong><span>错题连续答对两次后完成修正。</span></div>
-        <div class="reward-rule"><strong>修正错题 +10</strong><span>完成一次错题修正时额外奖励。</span></div>
-        <div class="reward-rule"><strong>连续答对奖励</strong><span>x3 +3、x5 +5、x10及之后每10次 +8。</span></div>
-        <div class="reward-rule"><strong>完成主题 +30</strong><span>每个主题首次全部掌握时获得一次。</span></div>
-        <div class="reward-rule"><strong>点读不加经验</strong><span>点读用于练习发音；答错不加经验并清空连对。</span></div>
+        <div class="reward-rule"><strong>普通答对 +5 绿宝石</strong><span>每次正确回答都能获得绿宝石。</span></div>
+        <div class="reward-rule"><strong>错题复现答对 +4 绿宝石</strong><span>错题连续答对两次后完成修正。</span></div>
+        <div class="reward-rule"><strong>修正错题 +10 绿宝石</strong><span>完成一次错题修正时额外奖励。</span></div>
+        <div class="reward-rule"><strong>连续答对奖励</strong><span>x3 +3、x5 +5、x10及之后每10次 +8 绿宝石。</span></div>
+        <div class="reward-rule"><strong>完成主题 +30 绿宝石</strong><span>每个主题首次全部掌握时获得一次。</span></div>
+        <div class="reward-rule"><strong>点读不获得绿宝石</strong><span>点读用于练习发音；答错不奖励并清空连对。</span></div>
       </div>
       <h3>宝石等级</h3>
       <div class="reward-level-grid">
-        <div class="reward-level-item"><strong>Lv1 煤炭新手</strong><span>0 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv2 铁锭学徒</strong><span>120 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv3 金锭冒险家</strong><span>320 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv4 红石能手</strong><span>650 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv5 青金石法师</strong><span>1100 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv6 绿宝石大师</strong><span>1700 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv7 钻石勇士</strong><span>2500 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv8 下界合金传奇</strong><span>3600 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv1 煤炭新手</strong><span>0 绿宝石</span></div>
+        <div class="reward-level-item"><strong>Lv2 铁锭学徒</strong><span>120 绿宝石</span></div>
+        <div class="reward-level-item"><strong>Lv3 金锭冒险家</strong><span>320 绿宝石</span></div>
+        <div class="reward-level-item"><strong>Lv4 红石能手</strong><span>650 绿宝石</span></div>
+        <div class="reward-level-item"><strong>Lv5 青金石法师</strong><span>1100 绿宝石</span></div>
+        <div class="reward-level-item"><strong>Lv6 绿宝石大师</strong><span>1700 绿宝石</span></div>
+        <div class="reward-level-item"><strong>Lv7 钻石勇士</strong><span>2500 绿宝石</span></div>
+        <div class="reward-level-item"><strong>Lv8 下界合金传奇</strong><span>3600 绿宝石</span></div>
       </div>
-      <p class="reward-rule-note">每天最多获得 150 EXP，达到上限后仍可正常学习和答题。</p>
+      <p class="reward-rule-note">每天最多获得 150 绿宝石，达到上限后仍可正常学习和答题。</p>
     </section>
   </div>
 
@@ -2063,7 +2075,9 @@
       rewardState = state;
       applyGemTheme(state.gemKey);
       els.rewardTitle.textContent = `Lv${state.level} ${state.title}`;
-      els.rewardExp.textContent = `${state.levelExp} / ${state.levelNeed} EXP`;
+      const currentEmeralds = state.levelEmeralds ?? state.levelExp ?? 0;
+      const neededEmeralds = state.levelNeedEmeralds ?? state.levelNeed ?? 1;
+      els.rewardExp.textContent = `${currentEmeralds} / ${neededEmeralds} ${state.currencyLabel || "绿宝石"}`;
       els.rewardFill.style.width = `${state.progressPercent || 0}%`;
       els.rewardToday.textContent = state.todayExp || 0;
       els.rewardStreak.textContent = state.streakCorrect || 0;
@@ -2094,7 +2108,7 @@
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       const from = sourceNode ? rectCenter(sourceNode) : rectCenter(els.quiz);
       const to = rectCenter(els.rewardGem);
-      const theme = gemThemes[rewardState?.gemKey] || gemThemes.coal;
+      const theme = gemThemes.emerald;
       for (let i = 0; i < count; i += 1) {
         const particle = document.createElement("span");
         particle.className = "gem-particle";
@@ -2147,7 +2161,8 @@
             pulseReward("reward-pulse", 700);
           }
           spawnGemParticles(sourceNode, event.type === "theme_badge" ? 7 : event.type === "streak" ? 6 : 4);
-          showRewardToast(event.label || (event.exp ? `获得 +${event.exp} EXP` : ""));
+          const emeralds = event.emeralds ?? event.exp ?? 0;
+          showRewardToast(event.label || (emeralds ? `获得 +${emeralds} 绿宝石` : ""));
         }, index * 220);
       });
     }

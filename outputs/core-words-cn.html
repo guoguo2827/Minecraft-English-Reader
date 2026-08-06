@@ -271,6 +271,18 @@
 
     .core-reward-meta p { margin: 4px 0 0; }
 
+    #rewardExp::before {
+      content: "";
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      margin-right: 6px;
+      border: 2px solid #b9ffd0;
+      background: #27b85a;
+      box-shadow: inset 2px 2px 0 #74f29a, 0 0 7px rgba(76, 255, 137, .7);
+      transform: rotate(45deg);
+    }
+
     .reward-rules-button {
       min-height: 27px;
       padding: 2px 7px;
@@ -559,8 +571,9 @@
       width: 9px;
       height: 9px;
       pointer-events: none;
-      background: #65f2d6;
-      box-shadow: 0 0 8px #fff7a5;
+      background: #27b85a;
+      border: 1px solid #b9ffd0;
+      box-shadow: inset 2px 2px 0 #74f29a, 0 0 8px rgba(76, 255, 137, .75);
       animation: reward-fly .7s ease-out forwards;
     }
 
@@ -686,7 +699,7 @@
           <div class="core-reward-copy">
             <h3 id="rewardTitle">Lv1 Coal Beginner</h3>
             <div class="core-reward-meta">
-              <p id="rewardExp">0 / 120 EXP</p>
+              <p id="rewardExp">0 / 120 Emeralds</p>
               <button class="reward-rules-button" id="rewardRulesBtn" type="button" aria-label="Reward Rules" aria-haspopup="dialog">Rules</button>
             </div>
           </div>
@@ -724,30 +737,30 @@
       <div class="reward-rules-head">
         <div>
           <span class="quiz-label">Gem Level System</span>
-          <h2 id="rewardRulesTitle">How to earn EXP</h2>
+          <h2 id="rewardRulesTitle">How to earn Emeralds</h2>
         </div>
         <button class="reward-rules-close" type="button" data-close-reward-rules aria-label="Close">×</button>
       </div>
       <div class="reward-rule-grid">
-        <div class="reward-rule"><strong>Correct answer +5</strong><span>Earn EXP for each regular correct answer.</span></div>
-        <div class="reward-rule"><strong>Review answer +4</strong><span>A missed word returns later for another try.</span></div>
-        <div class="reward-rule"><strong>Review fixed +10</strong><span>Earn a bonus after correcting the word twice in a row.</span></div>
-        <div class="reward-rule"><strong>Answer streak bonus</strong><span>x3 +3, x5 +5, x10 and every next 10 answers +8.</span></div>
-        <div class="reward-rule"><strong>Theme complete +30</strong><span>A one-time reward for mastering every word in a theme.</span></div>
-        <div class="reward-rule"><strong>Listening gives 0 EXP</strong><span>Listening is always available. A wrong answer resets the streak.</span></div>
+        <div class="reward-rule"><strong>Correct answer +5 Emeralds</strong><span>Earn Emeralds for each regular correct answer.</span></div>
+        <div class="reward-rule"><strong>Review answer +4 Emeralds</strong><span>A missed word returns later for another try.</span></div>
+        <div class="reward-rule"><strong>Review fixed +10 Emeralds</strong><span>Earn a bonus after correcting the word twice in a row.</span></div>
+        <div class="reward-rule"><strong>Answer streak bonus</strong><span>x3 +3, x5 +5, x10 and every next 10 answers +8 Emeralds.</span></div>
+        <div class="reward-rule"><strong>Theme complete +30 Emeralds</strong><span>A one-time reward for mastering every word in a theme.</span></div>
+        <div class="reward-rule"><strong>Listening gives 0 Emeralds</strong><span>Listening is always available. A wrong answer resets the streak.</span></div>
       </div>
       <h3>Gem levels</h3>
       <div class="reward-level-grid">
-        <div class="reward-level-item"><strong>Lv1 Coal Beginner</strong><span>0 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv2 Iron Learner</strong><span>120 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv3 Gold Explorer</strong><span>320 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv4 Redstone Speaker</strong><span>650 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv5 Lapis Scholar</strong><span>1100 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv6 Emerald Communicator</strong><span>1700 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv7 Diamond Master</strong><span>2500 EXP</span></div>
-        <div class="reward-level-item"><strong>Lv8 Netherite Legend</strong><span>3600 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv1 Coal Beginner</strong><span>0 Emeralds</span></div>
+        <div class="reward-level-item"><strong>Lv2 Iron Learner</strong><span>120 Emeralds</span></div>
+        <div class="reward-level-item"><strong>Lv3 Gold Explorer</strong><span>320 Emeralds</span></div>
+        <div class="reward-level-item"><strong>Lv4 Redstone Speaker</strong><span>650 Emeralds</span></div>
+        <div class="reward-level-item"><strong>Lv5 Lapis Scholar</strong><span>1100 Emeralds</span></div>
+        <div class="reward-level-item"><strong>Lv6 Emerald Communicator</strong><span>1700 Emeralds</span></div>
+        <div class="reward-level-item"><strong>Lv7 Diamond Master</strong><span>2500 Emeralds</span></div>
+        <div class="reward-level-item"><strong>Lv8 Netherite Legend</strong><span>3600 Emeralds</span></div>
       </div>
-      <p class="reward-rule-note">Daily limit: 150 EXP. Study, listening, and quizzes stay available after the limit.</p>
+      <p class="reward-rule-note">Daily limit: 150 Emeralds. Study, listening, and quizzes stay available after the limit.</p>
     </section>
   </div>
 
@@ -888,7 +901,9 @@
       els.rewardPanel.style.setProperty("--gem-glow", theme.glow);
       els.rewardGem.innerHTML = gemSvg(theme);
       els.rewardTitle.textContent = `Lv${state.level} ${state.title}`;
-      els.rewardExp.textContent = `${state.levelExp} / ${state.levelNeed} EXP`;
+      const currentEmeralds = state.levelEmeralds ?? state.levelExp ?? 0;
+      const neededEmeralds = state.levelNeedEmeralds ?? state.levelNeed ?? 1;
+      els.rewardExp.textContent = `${currentEmeralds} / ${neededEmeralds} ${state.currencyLabel || "Emeralds"}`;
       els.rewardFill.style.width = `${state.progressPercent || 0}%`;
       els.rewardToday.textContent = state.todayExp || 0;
       els.rewardStreak.textContent = state.streakCorrect || 0;

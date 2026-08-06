@@ -788,6 +788,13 @@ function rewardSummary(userId) {
   `).all(userId);
   return {
     ...level,
+    currencyKey: "emerald",
+    currencyLabel: "绿宝石",
+    dailyLimit: dailyExpLimit,
+    levelEmeralds: level.levelExp,
+    levelNeedEmeralds: level.levelNeed,
+    totalEmeralds: row.total_exp,
+    todayEmeralds: row.today_exp,
     totalExp: row.total_exp,
     todayExp: row.today_exp,
     streakCorrect: row.streak_correct,
@@ -800,6 +807,7 @@ function rewardSummary(userId) {
 function eventPayload(event) {
   return {
     type: event.event_type || event.type,
+    emeralds: event.exp || 0,
     exp: event.exp || 0,
     label: event.label || "",
     themeId: event.theme_id || event.themeId || "",
@@ -823,13 +831,13 @@ function grantReward(userId, event) {
       userId,
       event.type,
       grantedExp,
-      requestedExp > 0 && grantedExp === 0 ? `${label}（今日经验已达上限）` : label,
+      requestedExp > 0 && grantedExp === 0 ? `${label}（今日绿宝石已达上限）` : label,
       event.themeId || "",
       event.word || "",
       event.uniqueKey || null,
       now()
     );
-    inserted = { id: result.lastInsertRowid, ...event };
+    inserted = { id: result.lastInsertRowid, ...event, exp: grantedExp };
   } catch (error) {
     if (!event.uniqueKey || !String(error.message || "").includes("UNIQUE")) throw error;
     return { events: [], state: rewardSummary(userId) };
@@ -850,6 +858,7 @@ function grantReward(userId, event) {
   if (state.level > beforeLevel) {
     events.push({
       type: "level_up",
+      emeralds: 0,
       exp: 0,
       label: `升级到 ${state.title}`,
       level: state.level,
@@ -1066,6 +1075,7 @@ function ensureChineseRewardRow(userId) {
 
 function chineseRewardSummary(userId) {
   const row = ensureChineseRewardRow(userId);
+  const level = chineseLevelInfo(row.total_exp);
   const badges = db.prepare(`
     SELECT theme_id AS themeId, title, created_at AS createdAt
     FROM chinese_theme_badges WHERE user_id = ? ORDER BY created_at DESC
@@ -1075,7 +1085,14 @@ function chineseRewardSummary(userId) {
     FROM chinese_reward_events WHERE user_id = ? ORDER BY id DESC LIMIT 5
   `).all(userId);
   return {
-    ...chineseLevelInfo(row.total_exp),
+    ...level,
+    currencyKey: "emerald",
+    currencyLabel: "Emeralds",
+    dailyLimit: dailyExpLimit,
+    levelEmeralds: level.levelExp,
+    levelNeedEmeralds: level.levelNeed,
+    totalEmeralds: row.total_exp,
+    todayEmeralds: row.today_exp,
     totalExp: row.total_exp,
     todayExp: row.today_exp,
     streakCorrect: row.streak_correct,
@@ -1098,7 +1115,7 @@ function chineseGrantReward(userId, event) {
       userId,
       event.type,
       grantedExp,
-      requestedExp > 0 && grantedExp === 0 ? `${event.label || "Reward"} (daily EXP limit reached)` : (event.label || ""),
+      requestedExp > 0 && grantedExp === 0 ? `${event.label || "Reward"} (daily Emerald limit reached)` : (event.label || ""),
       event.themeId || "",
       event.itemId || "",
       event.uniqueKey || null,
@@ -1117,9 +1134,9 @@ function chineseGrantReward(userId, event) {
     `).run(grantedExp, grantedExp, now(), userId);
   }
   const state = chineseRewardSummary(userId);
-  const events = [{ type: event.type, exp: grantedExp, label: event.label || "", themeId: event.themeId || "", itemId: event.itemId || "" }];
+  const events = [{ type: event.type, emeralds: grantedExp, exp: grantedExp, label: event.label || "", themeId: event.themeId || "", itemId: event.itemId || "" }];
   if (state.level > beforeLevel) {
-    events.push({ type: "level_up", exp: 0, label: `Level up: ${state.title}`, level: state.level, gemKey: state.gemKey });
+    events.push({ type: "level_up", emeralds: 0, exp: 0, label: `Level up: ${state.title}`, level: state.level, gemKey: state.gemKey });
   }
   return { events, state };
 }
@@ -1649,6 +1666,13 @@ app.get("/api/admin/users/:id/progress", requireAdmin, (req, res) => {
     progress,
     reward: {
       ...rewardLevel,
+      currencyKey: "emerald",
+      currencyLabel: course === "chinese" ? "Emeralds" : "绿宝石",
+      dailyLimit: dailyExpLimit,
+      levelEmeralds: rewardLevel.levelExp,
+      levelNeedEmeralds: rewardLevel.levelNeed,
+      totalEmeralds: rewardRow.total_exp,
+      todayEmeralds: rewardRow.today_exp,
       totalExp: rewardRow.total_exp,
       todayExp: rewardRow.today_exp,
       streakCorrect: rewardRow.streak_correct,
