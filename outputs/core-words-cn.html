@@ -258,6 +258,121 @@
       font-size: 13px;
     }
 
+    .core-reward-copy {
+      min-width: 0;
+    }
+
+    .core-reward-meta {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .core-reward-meta p { margin: 4px 0 0; }
+
+    .reward-rules-button {
+      min-height: 27px;
+      padding: 2px 7px;
+      border: 1px solid rgba(255,255,255,.45);
+      border-radius: 5px;
+      background: rgba(0,0,0,.25);
+      color: #fff8da;
+      box-shadow: none;
+      font-size: 10px;
+      font-weight: 1000;
+      white-space: nowrap;
+    }
+
+    .reward-rules-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+
+    .reward-rules-modal[hidden] { display: none; }
+
+    .reward-rules-backdrop {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+      background: rgba(20, 16, 10, .72);
+      box-shadow: none;
+    }
+
+    .reward-rules-dialog {
+      position: relative;
+      z-index: 1;
+      width: min(720px, 100%);
+      max-height: 86vh;
+      overflow: auto;
+      padding: 20px;
+      border: 4px solid #765126;
+      border-radius: 8px;
+      background: #fff9e8;
+      color: #172416;
+      box-shadow: 0 12px 0 rgba(0,0,0,.28);
+    }
+
+    .reward-rules-head {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .reward-rules-head h2 { margin: 0; }
+
+    .reward-rules-close {
+      width: 42px;
+      min-height: 42px;
+      padding: 0;
+      font-size: 27px;
+      line-height: 1;
+    }
+
+    .reward-rule-grid,
+    .reward-level-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .reward-rule,
+    .reward-level-item {
+      padding: 10px;
+      border: 2px solid #d0b072;
+      border-radius: 6px;
+      background: #fffdf3;
+    }
+
+    .reward-rule strong,
+    .reward-level-item strong { color: #216f30; }
+
+    .reward-rule span,
+    .reward-level-item span {
+      display: block;
+      margin-top: 3px;
+      color: #665;
+      font-size: 13px;
+    }
+
+    .reward-rule-note {
+      margin: 14px 0 0;
+      padding: 9px 10px;
+      border-left: 4px solid #2f7d32;
+      background: #eaf6df;
+      font-weight: 1000;
+    }
+
     .reward-bar {
       grid-column: 1 / -1;
       height: 14px;
@@ -568,9 +683,12 @@
         </div>
         <div class="core-reward" id="rewardPanel">
           <div class="core-gem" id="rewardGem" aria-hidden="true"></div>
-          <div>
+          <div class="core-reward-copy">
             <h3 id="rewardTitle">Lv1 Coal Beginner</h3>
-            <p id="rewardExp">0 / 120 EXP</p>
+            <div class="core-reward-meta">
+              <p id="rewardExp">0 / 120 EXP</p>
+              <button class="reward-rules-button" id="rewardRulesBtn" type="button" aria-label="Reward Rules" aria-haspopup="dialog">Rules</button>
+            </div>
           </div>
           <div class="reward-stats">
             <span>Today <b id="rewardToday">0</b></span>
@@ -599,6 +717,39 @@
       </section>
     </section>
   </main>
+
+  <div class="reward-rules-modal" id="rewardRulesModal" hidden>
+    <button class="reward-rules-backdrop" type="button" data-close-reward-rules aria-label="Close reward rules"></button>
+    <section class="reward-rules-dialog" role="dialog" aria-modal="true" aria-labelledby="rewardRulesTitle">
+      <div class="reward-rules-head">
+        <div>
+          <span class="quiz-label">Gem Level System</span>
+          <h2 id="rewardRulesTitle">How to earn EXP</h2>
+        </div>
+        <button class="reward-rules-close" type="button" data-close-reward-rules aria-label="Close">×</button>
+      </div>
+      <div class="reward-rule-grid">
+        <div class="reward-rule"><strong>Correct answer +5</strong><span>Earn EXP for each regular correct answer.</span></div>
+        <div class="reward-rule"><strong>Review answer +4</strong><span>A missed word returns later for another try.</span></div>
+        <div class="reward-rule"><strong>Review fixed +10</strong><span>Earn a bonus after correcting the word twice in a row.</span></div>
+        <div class="reward-rule"><strong>Answer streak bonus</strong><span>x3 +3, x5 +5, x10 and every next 10 answers +8.</span></div>
+        <div class="reward-rule"><strong>Theme complete +30</strong><span>A one-time reward for mastering every word in a theme.</span></div>
+        <div class="reward-rule"><strong>Listening gives 0 EXP</strong><span>Listening is always available. A wrong answer resets the streak.</span></div>
+      </div>
+      <h3>Gem levels</h3>
+      <div class="reward-level-grid">
+        <div class="reward-level-item"><strong>Lv1 Coal Beginner</strong><span>0 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv2 Iron Learner</strong><span>120 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv3 Gold Explorer</strong><span>320 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv4 Redstone Speaker</strong><span>650 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv5 Lapis Scholar</strong><span>1100 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv6 Emerald Communicator</strong><span>1700 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv7 Diamond Master</strong><span>2500 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv8 Netherite Legend</strong><span>3600 EXP</span></div>
+      </div>
+      <p class="reward-rule-note">Daily limit: 150 EXP. Study, listening, and quizzes stay available after the limit.</p>
+    </section>
+  </div>
 
   <p class="notice">Unofficial learning tool. Not affiliated with Mojang, Microsoft, or the official Minecraft brand.</p>
 
@@ -650,6 +801,8 @@
       rewardToday: document.querySelector("#rewardToday"),
       rewardStreak: document.querySelector("#rewardStreak"),
       rewardFixed: document.querySelector("#rewardFixed"),
+      rewardRulesBtn: document.querySelector("#rewardRulesBtn"),
+      rewardRulesModal: document.querySelector("#rewardRulesModal"),
       modeButtons: document.querySelectorAll("[data-mode-button]")
     };
 
@@ -914,6 +1067,15 @@
       els.cards.scrollTo({ top: 0, behavior: "smooth" });
     });
     els.modeButtons.forEach((button) => button.addEventListener("click", () => setStudyMode(button.dataset.modeButton)));
+    els.rewardRulesBtn.addEventListener("click", () => {
+      els.rewardRulesModal.hidden = false;
+    });
+    els.rewardRulesModal.addEventListener("click", (event) => {
+      if (event.target.closest("[data-close-reward-rules]")) els.rewardRulesModal.hidden = true;
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !els.rewardRulesModal.hidden) els.rewardRulesModal.hidden = true;
+    });
     els.logoutBtn.addEventListener("click", async () => {
       await fetch("/api/auth/logout", { method: "POST" });
       location.href = "/login?next=%2Fchinese";

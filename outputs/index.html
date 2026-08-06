@@ -405,6 +405,119 @@
       font-size: 11px;
     }
 
+    .reward-kicker-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .reward-kicker-row .reward-kicker {
+      margin: 0;
+    }
+
+    .reward-rules-button {
+      min-height: 28px;
+      padding: 2px 8px;
+      border: 1px solid rgba(255,255,255,.45);
+      border-radius: 5px;
+      background: rgba(0,0,0,.25);
+      color: #fff8da;
+      box-shadow: none;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .reward-rules-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+
+    .reward-rules-modal[hidden] { display: none; }
+
+    .reward-rules-backdrop {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+      background: rgba(20, 16, 10, .72);
+      box-shadow: none;
+    }
+
+    .reward-rules-dialog {
+      position: relative;
+      z-index: 1;
+      width: min(720px, 100%);
+      max-height: 86vh;
+      overflow: auto;
+      padding: 20px;
+      border: 4px solid #765126;
+      border-radius: 8px;
+      background: #fff9e8;
+      color: #172416;
+      box-shadow: 0 12px 0 rgba(0,0,0,.28);
+    }
+
+    .reward-rules-head {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .reward-rules-head h2 { margin: 0; }
+
+    .reward-rules-close {
+      width: 42px;
+      min-height: 42px;
+      padding: 0;
+      font-size: 27px;
+      line-height: 1;
+    }
+
+    .reward-rule-grid,
+    .reward-level-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .reward-rule,
+    .reward-level-item {
+      padding: 10px;
+      border: 2px solid #d0b072;
+      border-radius: 6px;
+      background: #fffdf3;
+    }
+
+    .reward-rule strong,
+    .reward-level-item strong { color: #216f30; }
+
+    .reward-rule span,
+    .reward-level-item span {
+      display: block;
+      margin-top: 3px;
+      color: #665;
+      font-size: 13px;
+    }
+
+    .reward-rule-note {
+      margin: 14px 0 0;
+      padding: 9px 10px;
+      border-left: 4px solid #2f7d32;
+      background: #eaf6df;
+      font-weight: 900;
+    }
+
     .reward-toast {
       position: absolute;
       right: 12px;
@@ -1173,9 +1286,12 @@
               <div class="reward-head">
                 <div class="gem-stage" id="rewardGem" aria-hidden="true"></div>
                 <div class="reward-copy">
-                  <p class="reward-kicker" id="rewardKicker">我的宝石等级</p>
+                  <div class="reward-kicker-row">
+                    <p class="reward-kicker" id="rewardKicker">我的宝石等级</p>
+                    <button class="reward-rules-button" id="rewardRulesBtn" type="button" aria-haspopup="dialog">奖励规则</button>
+                  </div>
                   <h3 class="reward-title" id="rewardTitle">Lv1 煤炭新手</h3>
-                  <p class="reward-exp" id="rewardExp">0 / 60 EXP</p>
+                  <p class="reward-exp" id="rewardExp">0 / 120 EXP</p>
                 </div>
               </div>
               <div class="reward-bar" aria-hidden="true"><div class="reward-fill" id="rewardFill"></div></div>
@@ -1208,6 +1324,39 @@
       </section>
     </main>
     <p class="copyright-note">非官方学习工具，与 Mojang、Microsoft、Minecraft 官方无关联，仅供私人学习交流使用。</p>
+  </div>
+
+  <div class="reward-rules-modal" id="rewardRulesModal" hidden>
+    <button class="reward-rules-backdrop" type="button" data-close-reward-rules aria-label="关闭奖励规则"></button>
+    <section class="reward-rules-dialog" role="dialog" aria-modal="true" aria-labelledby="rewardRulesTitle">
+      <div class="reward-rules-head">
+        <div>
+          <span class="quiz-label">宝石等级系统</span>
+          <h2 id="rewardRulesTitle">怎样获得 EXP</h2>
+        </div>
+        <button class="reward-rules-close" type="button" data-close-reward-rules aria-label="关闭">×</button>
+      </div>
+      <div class="reward-rule-grid">
+        <div class="reward-rule"><strong>普通答对 +5</strong><span>每次正确回答获得经验。</span></div>
+        <div class="reward-rule"><strong>错题复现答对 +4</strong><span>错题连续答对两次后完成修正。</span></div>
+        <div class="reward-rule"><strong>修正错题 +10</strong><span>完成一次错题修正时额外奖励。</span></div>
+        <div class="reward-rule"><strong>连续答对奖励</strong><span>x3 +3、x5 +5、x10及之后每10次 +8。</span></div>
+        <div class="reward-rule"><strong>完成主题 +30</strong><span>每个主题首次全部掌握时获得一次。</span></div>
+        <div class="reward-rule"><strong>点读不加经验</strong><span>点读用于练习发音；答错不加经验并清空连对。</span></div>
+      </div>
+      <h3>宝石等级</h3>
+      <div class="reward-level-grid">
+        <div class="reward-level-item"><strong>Lv1 煤炭新手</strong><span>0 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv2 铁锭学徒</strong><span>120 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv3 金锭冒险家</strong><span>320 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv4 红石能手</strong><span>650 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv5 青金石法师</strong><span>1100 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv6 绿宝石大师</strong><span>1700 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv7 钻石勇士</strong><span>2500 EXP</span></div>
+        <div class="reward-level-item"><strong>Lv8 下界合金传奇</strong><span>3600 EXP</span></div>
+      </div>
+      <p class="reward-rule-note">每天最多获得 150 EXP，达到上限后仍可正常学习和答题。</p>
+    </section>
   </div>
 
   <script>
@@ -1828,6 +1977,8 @@
       rewardStreak: document.querySelector("#rewardStreak"),
       rewardFixed: document.querySelector("#rewardFixed"),
       rewardToast: document.querySelector("#rewardToast"),
+      rewardRulesBtn: document.querySelector("#rewardRulesBtn"),
+      rewardRulesModal: document.querySelector("#rewardRulesModal"),
       quizBtn: document.querySelector("#quizBtn"),
       quizWord: document.querySelector("#quizWord"),
       speakQuizBtn: document.querySelector("#speakQuizBtn"),
@@ -2336,6 +2487,15 @@
       button.addEventListener("click", () => setStudyMode(button.dataset.modeButton));
     });
     els.cnToggleBtn?.addEventListener("click", () => setCardChineseVisible(!showCardChinese));
+    els.rewardRulesBtn?.addEventListener("click", () => {
+      els.rewardRulesModal.hidden = false;
+    });
+    els.rewardRulesModal?.addEventListener("click", (event) => {
+      if (event.target.closest("[data-close-reward-rules]")) els.rewardRulesModal.hidden = true;
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !els.rewardRulesModal?.hidden) els.rewardRulesModal.hidden = true;
+    });
     window.speechSynthesis?.addEventListener?.("voiceschanged", pickVoice);
     window.addEventListener("resize", () => renderCards());
 

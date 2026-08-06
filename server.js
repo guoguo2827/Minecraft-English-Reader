@@ -694,8 +694,14 @@ function progressSummary(userId) {
       studiedWords: words.length,
       masteredWords: mastered,
       reviewCount,
+      answerCount: answers,
+      correctCount: correct,
       accuracy: answers ? Math.round((correct / answers) * 100) : 0,
-      completion: Math.round((mastered / theme.items.length) * 100)
+      completion: Math.round((mastered / theme.items.length) * 100),
+      lastStudiedAt: words.reduce((latest, item) => {
+        if (!item.last_studied_at) return latest;
+        return !latest || item.last_studied_at > latest ? item.last_studied_at : latest;
+      }, "")
     };
   });
 
@@ -704,8 +710,23 @@ function progressSummary(userId) {
     acc.studiedWords += theme.studiedWords;
     acc.masteredWords += theme.masteredWords;
     acc.reviewCount += theme.reviewCount;
+    acc.answerCount += theme.answerCount;
+    acc.correctCount += theme.correctCount;
+    if (theme.lastStudiedAt && (!acc.lastStudiedAt || theme.lastStudiedAt > acc.lastStudiedAt)) {
+      acc.lastStudiedAt = theme.lastStudiedAt;
+    }
     return acc;
-  }, { totalWords: 0, studiedWords: 0, masteredWords: 0, reviewCount: 0 });
+  }, {
+    totalWords: 0,
+    studiedWords: 0,
+    masteredWords: 0,
+    reviewCount: 0,
+    answerCount: 0,
+    correctCount: 0,
+    lastStudiedAt: ""
+  });
+  totals.accuracy = totals.answerCount ? Math.round((totals.correctCount / totals.answerCount) * 100) : 0;
+  totals.completion = totals.totalWords ? Math.round((totals.masteredWords / totals.totalWords) * 100) : 0;
 
   return { totals, themes: themesSummary };
 }
@@ -1264,8 +1285,14 @@ function chineseProgressSummary(userId) {
       studiedWords: words.length,
       masteredWords: mastered,
       reviewCount,
+      answerCount: answers,
+      correctCount: correct,
       accuracy: answers ? Math.round((correct / answers) * 100) : 0,
-      completion: Math.round((mastered / theme.items.length) * 100)
+      completion: Math.round((mastered / theme.items.length) * 100),
+      lastStudiedAt: words.reduce((latest, item) => {
+        if (!item.last_studied_at) return latest;
+        return !latest || item.last_studied_at > latest ? item.last_studied_at : latest;
+      }, "")
     };
   });
   const totals = themeSummaries.reduce((result, theme) => {
@@ -1273,9 +1300,71 @@ function chineseProgressSummary(userId) {
     result.studiedWords += theme.studiedWords;
     result.masteredWords += theme.masteredWords;
     result.reviewCount += theme.reviewCount;
+    result.answerCount += theme.answerCount;
+    result.correctCount += theme.correctCount;
+    if (theme.lastStudiedAt && (!result.lastStudiedAt || theme.lastStudiedAt > result.lastStudiedAt)) {
+      result.lastStudiedAt = theme.lastStudiedAt;
+    }
     return result;
-  }, { totalWords: 0, studiedWords: 0, masteredWords: 0, reviewCount: 0 });
+  }, {
+    totalWords: 0,
+    studiedWords: 0,
+    masteredWords: 0,
+    reviewCount: 0,
+    answerCount: 0,
+    correctCount: 0,
+    lastStudiedAt: ""
+  });
+  totals.accuracy = totals.answerCount ? Math.round((totals.correctCount / totals.answerCount) * 100) : 0;
+  totals.completion = totals.totalWords ? Math.round((totals.masteredWords / totals.totalWords) * 100) : 0;
   return { totals, themes: themeSummaries };
+}
+
+function adminCourseOverview(course) {
+  const isChinese = course === "chinese";
+  const progressTable = isChinese ? "chinese_word_progress" : "word_progress";
+  const reviewTable = isChinese ? "chinese_review_queue" : "review_queue";
+  const courseThemes = isChinese ? chineseThemes : themes;
+  const vocabularySize = courseThemes.reduce((total, theme) => total + theme.items.length, 0);
+  const users = db.prepare(`
+    SELECT
+      COUNT(*) AS totalUsers,
+      SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS activeUsers
+    FROM users WHERE role != 'admin'
+  `).get();
+  const learning = db.prepare(`
+    SELECT
+      COUNT(DISTINCT p.user_id) AS learnerCount,
+      COALESCE(SUM(p.read_count), 0) AS readCount,
+      COALESCE(SUM(p.answer_count), 0) AS answerCount,
+      COALESCE(SUM(p.correct_count), 0) AS correctCount,
+      COALESCE(SUM(CASE WHEN p.mastery_status = 'mastered' THEN 1 ELSE 0 END), 0) AS masteredWords,
+      MAX(p.last_studied_at) AS lastStudiedAt
+    FROM ${progressTable} p
+    JOIN users u ON u.id = p.user_id
+    WHERE u.role != 'admin'
+  `).get();
+  const reviewCount = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM ${reviewTable} q
+    JOIN users u ON u.id = q.user_id
+    WHERE q.status = 'active' AND u.role != 'admin'
+  `).get().count;
+  return {
+    course,
+    themeCount: courseThemes.length,
+    vocabularySize,
+    totalUsers: users.totalUsers || 0,
+    activeUsers: users.activeUsers || 0,
+    learnerCount: learning.learnerCount || 0,
+    readCount: learning.readCount || 0,
+    answerCount: learning.answerCount || 0,
+    correctCount: learning.correctCount || 0,
+    masteredWords: learning.masteredWords || 0,
+    reviewCount,
+    accuracy: learning.answerCount ? Math.round((learning.correctCount / learning.answerCount) * 100) : 0,
+    lastStudiedAt: learning.lastStudiedAt || ""
+  };
 }
 
 initDb();
@@ -1492,10 +1581,22 @@ app.patch("/api/admin/whitelist/:id", requireAdmin, (req, res) => {
     db.prepare("UPDATE phone_whitelist SET status = 'disabled', disabled_at = ? WHERE id = ? AND status = 'unused'")
       .run(now(), id);
   }
+  if (req.body.status === "unused") {
+    db.prepare(`
+      UPDATE phone_whitelist
+      SET status = 'unused', disabled_at = NULL
+      WHERE id = ? AND status = 'disabled' AND used_by IS NULL
+    `).run(id);
+  }
   if (Object.prototype.hasOwnProperty.call(req.body, "note")) {
     db.prepare("UPDATE phone_whitelist SET note = ? WHERE id = ?").run(note, id);
   }
   return res.json({ ok: true });
+});
+
+app.get("/api/admin/course-summary", requireAdmin, (req, res) => {
+  const course = req.query.course === "chinese" ? "chinese" : "english";
+  return res.json(adminCourseOverview(course));
 });
 
 app.get("/api/admin/users", requireAdmin, (req, res) => {
@@ -1520,6 +1621,40 @@ app.get("/api/admin/users", requireAdmin, (req, res) => {
     progress: course === "chinese" ? chineseProgressSummary(user.id).totals : progressSummary(user.id).totals
   }));
   return res.json({ items, page: safePage, pageSize, total, totalPages, course });
+});
+
+app.get("/api/admin/users/:id/progress", requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "用户编号无效" });
+  const user = db.prepare(`
+    SELECT id, username, nickname, phone, role, status, created_at, last_login_at
+    FROM users WHERE id = ?
+  `).get(id);
+  if (!user) return res.status(404).json({ error: "用户不存在" });
+
+  const course = req.query.course === "chinese" ? "chinese" : "english";
+  const progress = course === "chinese" ? chineseProgressSummary(id) : progressSummary(id);
+  const rewardTable = course === "chinese" ? "chinese_user_rewards" : "user_rewards";
+  const rewardRow = db.prepare(`
+    SELECT total_exp, today_exp, streak_correct, fixed_reviews
+    FROM ${rewardTable} WHERE user_id = ?
+  `).get(id) || { total_exp: 0, today_exp: 0, streak_correct: 0, fixed_reviews: 0 };
+  const rewardLevel = course === "chinese"
+    ? chineseLevelInfo(rewardRow.total_exp)
+    : levelInfo(rewardRow.total_exp);
+
+  return res.json({
+    course,
+    user,
+    progress,
+    reward: {
+      ...rewardLevel,
+      totalExp: rewardRow.total_exp,
+      todayExp: rewardRow.today_exp,
+      streakCorrect: rewardRow.streak_correct,
+      fixedReviews: rewardRow.fixed_reviews
+    }
+  });
 });
 
 app.patch("/api/admin/users/:id", requireAdmin, (req, res) => {

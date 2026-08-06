@@ -222,6 +222,246 @@ button.danger {
   font-size: 14px;
 }
 
+.admin-panel {
+  display: grid;
+  gap: 24px;
+}
+
+.admin-panel h1,
+.admin-panel h2,
+.admin-panel h3 {
+  margin-bottom: 8px;
+}
+
+.admin-top {
+  padding-bottom: 16px;
+  border-bottom: 3px solid #d0b072;
+}
+
+.admin-course-tabs {
+  position: sticky;
+  top: 8px;
+  z-index: 8;
+  width: 100%;
+  margin: 0;
+  box-shadow: 0 5px 0 rgba(70, 45, 20, .18);
+}
+
+.admin-course-tabs button {
+  min-height: 48px;
+  font-size: 17px;
+}
+
+.admin-section {
+  padding-top: 4px;
+}
+
+.shared-admin {
+  padding-top: 24px;
+  border-top: 4px solid #d0b072;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.section-kicker {
+  margin: 0 0 2px;
+  color: var(--leaf);
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.course-badge,
+.shared-badge,
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 2px solid #2b6931;
+  border-radius: 6px;
+  background: #e1f3d5;
+  color: #1c5425;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.shared-badge {
+  border-color: #96713f;
+  background: #f4e6be;
+  color: #65431f;
+}
+
+.admin-summary-grid,
+.detail-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-stat {
+  min-width: 0;
+  padding: 12px;
+  border: 3px solid #d0b072;
+  border-radius: 8px;
+  background: #fffdf3;
+}
+
+.admin-stat span,
+.admin-stat small {
+  display: block;
+  color: #665;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-stat strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--leaf);
+  font-size: 25px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.summary-foot {
+  grid-column: 1 / -1;
+  padding: 8px 10px;
+  border-left: 4px solid var(--leaf);
+  background: #eef8e7;
+  color: #43543d;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.user-heading {
+  margin-top: 28px;
+}
+
+.user-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.status-chip {
+  min-height: 24px;
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+.status-chip.disabled {
+  border-color: #9a3d35;
+  background: #ffe1da;
+  color: #862b25;
+}
+
+.whitelist-form {
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+}
+
+.admin-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.admin-modal[hidden] {
+  display: none;
+}
+
+.admin-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: rgba(25, 22, 15, .68);
+  box-shadow: none;
+}
+
+.admin-modal-content {
+  position: relative;
+  z-index: 1;
+  width: min(920px, 100%);
+  max-height: min(82vh, 760px);
+  overflow: auto;
+  padding: 20px;
+  border: 4px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 12px 0 rgba(20, 15, 10, .32);
+}
+
+.icon-close {
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.detail-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.theme-progress-list {
+  display: grid;
+  gap: 8px;
+}
+
+.theme-progress-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(120px, 1fr) 48px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 2px solid #d7c394;
+  border-radius: 6px;
+  background: #fffdf3;
+}
+
+.theme-progress-copy span {
+  display: block;
+  margin-top: 3px;
+  color: #665;
+  font-size: 12px;
+}
+
+.progress-track {
+  height: 14px;
+  overflow: hidden;
+  border: 2px solid #7b9568;
+  border-radius: 6px;
+  background: #e4eadf;
+}
+
+.progress-track i {
+  display: block;
+  height: 100%;
+  background: var(--leaf);
+}
+
+.detail-loading {
+  padding: 32px;
+  text-align: center;
+  font-weight: 900;
+}
+
 @media (max-width: 760px) {
   .grid,
   .row,
@@ -231,6 +471,23 @@ button.danger {
 
   .top {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-course-tabs,
+  .whitelist-form,
+  .admin-summary-grid,
+  .detail-summary,
+  .theme-progress-row {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-foot {
+    grid-column: auto;
+  }
+
+  .section-heading {
+    align-items: flex-start;
     flex-direction: column;
   }
 }
