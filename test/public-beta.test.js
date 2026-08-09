@@ -233,6 +233,87 @@ test("daily Emerald cap returns an explicit zero-reward message", async () => {
   assert.match(answer.rewardEvents[0].label, /今日绿宝石已达上限/);
 });
 
+test("a missed word rests for the day after three correct reviews", async () => {
+  const themesResponse = await fetch(`${baseUrl}/api/themes`, { headers: { Cookie: invitedCookie } });
+  const themes = await themesResponse.json();
+  const theme = themes.themes.find((candidate) => !candidate.locked);
+  const item = theme.items[2];
+  const wrongItem = theme.items.find((candidate) => candidate.cn !== item.cn);
+  const wrongResponse = await fetch(`${baseUrl}/api/quiz/answer`, {
+    method: "POST",
+    headers: authHeaders(invitedCookie),
+    body: JSON.stringify({ themeId: theme.id, word: item.word, selectedCn: wrongItem.cn })
+  });
+  assert.equal((await wrongResponse.json()).correct, false);
+
+  for (let index = 0; index < 5; index += 1) {
+    const nextResponse = await fetch(`${baseUrl}/api/quiz/next`, {
+      method: "POST", headers: authHeaders(invitedCookie), body: JSON.stringify({ themeId: theme.id })
+    });
+    assert.notEqual((await nextResponse.json()).word, item.word, "pending review appeared before question 6");
+  }
+
+  for (let fixedCount = 1; fixedCount <= 3; fixedCount += 1) {
+    const response = await fetch(`${baseUrl}/api/quiz/answer`, {
+      method: "POST",
+      headers: authHeaders(invitedCookie),
+      body: JSON.stringify({ themeId: theme.id, word: item.word, selectedCn: item.cn })
+    });
+    assert.equal((await response.json()).correct, true);
+    const queue = db.prepare(`
+      SELECT status, consecutive_fix_count FROM review_queue
+      WHERE user_id = (SELECT id FROM users WHERE phone = ?) AND theme_id = ? AND word = ?
+    `).get("13700000002", theme.id, item.word);
+    assert.equal(queue.consecutive_fix_count, fixedCount);
+    assert.equal(queue.status, fixedCount === 3 ? "fixed" : "active");
+  }
+  const progress = db.prepare(`
+    SELECT mastery_status FROM word_progress
+    WHERE user_id = (SELECT id FROM users WHERE phone = ?) AND theme_id = ? AND word = ?
+  `).get("13700000002", theme.id, item.word);
+  assert.equal(progress.mastery_status, "mastered");
+
+  for (let index = 0; index < 40; index += 1) {
+    const nextResponse = await fetch(`${baseUrl}/api/quiz/next`, {
+      method: "POST", headers: authHeaders(invitedCookie), body: JSON.stringify({ themeId: theme.id })
+    });
+    assert.notEqual((await nextResponse.json()).word, item.word, "fixed review reappeared on the same day");
+  }
+});
+
+test("Chinese review words use the same three-correct daily rest rule", async () => {
+  const themesResponse = await fetch(`${baseUrl}/api/chinese/themes`, { headers: { Cookie: adminCookie } });
+  const themes = await themesResponse.json();
+  const theme = themes.themes[0];
+  const item = theme.items[1];
+  const wrongItem = theme.items.find((candidate) => candidate.chinese !== item.chinese);
+  await fetch(`${baseUrl}/api/chinese/quiz/answer`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ themeId: theme.id, itemId: item.id, selectedChinese: wrongItem.chinese })
+  });
+  for (let fixedCount = 1; fixedCount <= 3; fixedCount += 1) {
+    const response = await fetch(`${baseUrl}/api/chinese/quiz/answer`, {
+      method: "POST",
+      headers: authHeaders(adminCookie),
+      body: JSON.stringify({ themeId: theme.id, itemId: item.id, selectedChinese: item.chinese })
+    });
+    assert.equal((await response.json()).correct, true);
+  }
+  const queue = db.prepare(`
+    SELECT status, consecutive_fix_count FROM chinese_review_queue
+    WHERE user_id = (SELECT id FROM users WHERE role = 'admin') AND theme_id = ? AND item_id = ?
+  `).get(theme.id, item.id);
+  assert.equal(queue.status, "fixed");
+  assert.equal(queue.consecutive_fix_count, 3);
+  for (let index = 0; index < 30; index += 1) {
+    const nextResponse = await fetch(`${baseUrl}/api/chinese/quiz/next`, {
+      method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ themeId: theme.id })
+    });
+    assert.notEqual((await nextResponse.json()).itemId, item.id, "fixed Chinese review reappeared on the same day");
+  }
+});
+
 test("disabled accounts receive a stable API error code", async () => {
   db.prepare("UPDATE users SET status = 'disabled' WHERE phone = ?").run("13700000002");
   const me = await fetch(`${baseUrl}/api/me`, { headers: { Cookie: invitedCookie } });

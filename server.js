@@ -985,14 +985,24 @@ function chooseQuizItem(userId, themeId) {
   db.prepare("UPDATE theme_quiz_state SET question_no = ?, updated_at = ? WHERE user_id = ? AND theme_id = ?")
     .run(questionNo, now(), userId, themeId);
 
-  const dueItems = db.prepare(`
-    SELECT word FROM review_queue
-    WHERE user_id = ? AND theme_id = ? AND status = 'active' AND due_question_no <= ?
-  `).all(userId, themeId, questionNo);
-  const dueWords = new Set(dueItems.map((item) => item.word));
-  const candidates = dueWords.size
+  const reviewItems = db.prepare(`
+    SELECT word, due_question_no, status, updated_at FROM review_queue
+    WHERE user_id = ? AND theme_id = ?
+  `).all(userId, themeId);
+  const dueWords = new Set(reviewItems
+    .filter((item) => item.status === "active" && item.due_question_no <= questionNo)
+    .map((item) => item.word));
+  const pendingWords = new Set(reviewItems
+    .filter((item) => item.status === "active" && item.due_question_no > questionNo)
+    .map((item) => item.word));
+  const fixedTodayWords = new Set(reviewItems
+    .filter((item) => item.status === "fixed" && shanghaiDateKey(new Date(item.updated_at)) === todayKey())
+    .map((item) => item.word));
+  let candidates = dueWords.size
     ? theme.items.filter((item) => dueWords.has(item.word))
-    : theme.items;
+    : theme.items.filter((item) => !pendingWords.has(item.word) && !fixedTodayWords.has(item.word));
+  if (!candidates.length) candidates = theme.items.filter((item) => !fixedTodayWords.has(item.word));
+  if (!candidates.length) throw new Error("今天该主题的错题已全部修正，请明天再练习");
   const quizItem = candidates[crypto.randomInt(candidates.length)];
   const wrongPool = shuffle(theme.items.filter((item) => item.cn !== quizItem.cn)).slice(0, 3);
   return {
@@ -1061,7 +1071,7 @@ function answerQuiz(userId, themeId, word, selectedCn) {
     correct ? 1 : 0,
     correct ? 0 : 1,
     correct ? consecutiveCorrect : 0,
-    correct ? (consecutiveCorrect >= 2 ? "mastered" : "learning") : "review",
+    correct ? (consecutiveCorrect >= 3 ? "mastered" : "learning") : "review",
     now()
   );
 
@@ -1069,7 +1079,7 @@ function answerQuiz(userId, themeId, word, selectedCn) {
     scheduleReview(userId, themeId, word, state.question_no, 0);
   } else if (queue && queue.status === "active") {
     const fixedCount = queue.consecutive_fix_count + 1;
-    if (fixedCount >= 2) {
+    if (fixedCount >= 3) {
       db.prepare("UPDATE review_queue SET status = 'fixed', consecutive_fix_count = ?, updated_at = ? WHERE id = ?")
         .run(fixedCount, now(), queue.id);
       fixedReview = true;
@@ -1427,15 +1437,23 @@ function chooseChineseQuizItem(userId, themeId) {
     .run(questionNo, now(), userId, themeId);
 
   const reviewItems = db.prepare(`
-    SELECT item_id, due_question_no FROM chinese_review_queue
-    WHERE user_id = ? AND theme_id = ? AND status = 'active'
+    SELECT item_id, due_question_no, status, updated_at FROM chinese_review_queue
+    WHERE user_id = ? AND theme_id = ?
   `).all(userId, themeId);
-  const dueIds = new Set(reviewItems.filter((item) => item.due_question_no <= questionNo).map((item) => item.item_id));
-  const pendingIds = new Set(reviewItems.filter((item) => item.due_question_no > questionNo).map((item) => item.item_id));
+  const dueIds = new Set(reviewItems
+    .filter((item) => item.status === "active" && item.due_question_no <= questionNo)
+    .map((item) => item.item_id));
+  const pendingIds = new Set(reviewItems
+    .filter((item) => item.status === "active" && item.due_question_no > questionNo)
+    .map((item) => item.item_id));
+  const fixedTodayIds = new Set(reviewItems
+    .filter((item) => item.status === "fixed" && shanghaiDateKey(new Date(item.updated_at)) === todayKey())
+    .map((item) => item.item_id));
   let candidates = dueIds.size
     ? theme.items.filter((item) => dueIds.has(item.id))
-    : theme.items.filter((item) => !pendingIds.has(item.id));
-  if (!candidates.length) candidates = theme.items;
+    : theme.items.filter((item) => !pendingIds.has(item.id) && !fixedTodayIds.has(item.id));
+  if (!candidates.length) candidates = theme.items.filter((item) => !fixedTodayIds.has(item.id));
+  if (!candidates.length) throw new Error("All review words in this theme are fixed for today. Try again tomorrow.");
   const item = candidates[crypto.randomInt(candidates.length)];
   const seenChinese = new Set([item.chinese]);
   const wrongPool = shuffle(theme.items.filter((candidate) => candidate.id !== item.id)).filter((candidate) => {
@@ -1677,7 +1695,7 @@ function answerChineseQuiz(userId, themeId, itemId, selectedChinese) {
     correct ? 1 : 0,
     correct ? 0 : 1,
     consecutiveCorrect,
-    correct ? (consecutiveCorrect >= 2 ? "mastered" : "learning") : "review",
+    correct ? (consecutiveCorrect >= 3 ? "mastered" : "learning") : "review",
     now()
   );
 
@@ -1685,7 +1703,7 @@ function answerChineseQuiz(userId, themeId, itemId, selectedChinese) {
     scheduleChineseReview(userId, themeId, itemId, state.question_no, 0);
   } else if (hadActiveReview) {
     const fixedCount = queue.consecutive_fix_count + 1;
-    if (fixedCount >= 2) {
+    if (fixedCount >= 3) {
       db.prepare("UPDATE chinese_review_queue SET status = 'fixed', consecutive_fix_count = ?, updated_at = ? WHERE id = ?")
         .run(fixedCount, now(), queue.id);
       fixedReview = true;
