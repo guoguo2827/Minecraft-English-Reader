@@ -8,6 +8,8 @@ const express = require("express");
 const session = require("express-session");
 const bcrypt = require("bcryptjs");
 const Database = require("better-sqlite3");
+const createSqliteSessionStore = require("./lib/sqlite-session-store");
+const { createWindowCounter, rateLimitMiddleware } = require("./lib/rate-limit");
 
 const app = express();
 const rootDir = __dirname;
@@ -15,10 +17,22 @@ const publicDir = path.join(rootDir, "outputs");
 const dataDir = path.join(rootDir, "data");
 const audioDir = path.join(dataDir, "audio");
 const dbPath = process.env.DATABASE_PATH || path.join(dataDir, "app.db");
+const sessionsDbPath = process.env.SESSION_DATABASE_PATH || path.join(dataDir, "sessions.db");
 const port = Number(process.env.PORT || 3000);
+const host = process.env.HOST || "127.0.0.1";
+const sessionSecret = process.env.SESSION_SECRET || "dev-change-this-session-secret";
+const appTimezone = process.env.APP_TIMEZONE || "Asia/Shanghai";
+const accessControlEnforced = process.env.ACCESS_CONTROL_ENFORCED === "true";
+const trialDays = 14;
+const referralLimit = 20;
+const auditRetentionDays = 90;
 const inviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const passwordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 const dailyExpLimit = 150;
+
+if (process.env.NODE_ENV === "production" && sessionSecret.length < 32) {
+  throw new Error("SESSION_SECRET must contain at least 32 characters in production");
+}
 const rewardLevels = [
   { level: 1, minExp: 0, title: "煤炭新手", gemKey: "coal" },
   { level: 2, minExp: 120, title: "铁锭学徒", gemKey: "iron" },
@@ -46,6 +60,9 @@ fs.mkdirSync(audioDir, { recursive: true });
 const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
+
+const SqliteSessionStore = createSqliteSessionStore(session);
+const sessionStore = new SqliteSessionStore({ path: sessionsDbPath });
 
 function now() {
   return new Date().toISOString();
@@ -196,7 +213,9 @@ async function ensureTtsAudio(text, options = {}) {
   const ext = codec === "wav" ? "wav" : "mp3";
   const voiceType = getTencentVoiceType(lang);
   const filePath = path.join(audioDir, `${safeAudioName(normalizedText, voiceType, ext, lang)}.${ext}`);
-  if (fs.existsSync(filePath)) return { filePath, contentType: ext === "wav" ? "audio/wav" : "audio/mpeg" };
+  if (fs.existsSync(filePath)) return { filePath, contentType: ext === "wav" ? "audio/wav" : "audio/mpeg", cached: true };
+
+  if (options.beforeGenerate) options.beforeGenerate();
 
   const payload = {
     Text: normalizedText,
@@ -213,7 +232,177 @@ async function ensureTtsAudio(text, options = {}) {
   const response = await tencentTtsRequest(payload);
   if (!response?.Audio) throw new Error("Tencent TTS returned no audio");
   fs.writeFileSync(filePath, Buffer.from(response.Audio, "base64"));
-  return { filePath, contentType: ext === "wav" ? "audio/wav" : "audio/mpeg" };
+  return { filePath, contentType: ext === "wav" ? "audio/wav" : "audio/mpeg", cached: false };
+}
+
+function hasColumn(table, column) {
+  return db.prepare(`PRAGMA table_info(${table})`).all().some((item) => item.name === column);
+}
+
+function addColumn(table, definition) {
+  const column = definition.trim().split(/\s+/)[0];
+  if (!hasColumn(table, column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+}
+
+function migrationApplied(version) {
+  return Boolean(db.prepare("SELECT 1 FROM schema_migrations WHERE version = ?").get(version));
+}
+
+function markMigration(version) {
+  db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(version, now());
+}
+
+function generatedSocialName(userId) {
+  const suffix = Number(userId).toString(36).toUpperCase().padStart(4, "0");
+  return `BlockLearner-${suffix}`;
+}
+
+function applyPublicBetaMigration() {
+  const version = "2026-08-09-public-beta-v1";
+  if (migrationApplied(version)) return;
+  db.transaction(() => {
+    addColumn("users", "access_tier TEXT NOT NULL DEFAULT 'founder_trial'");
+    addColumn("users", "trial_expires_at TEXT");
+    addColumn("users", "primary_course TEXT NOT NULL DEFAULT 'english'");
+    addColumn("users", "social_name TEXT");
+    addColumn("phone_whitelist", "primary_course TEXT NOT NULL DEFAULT 'english'");
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS admin_audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_user_id INTEGER,
+        action TEXT NOT NULL,
+        target_type TEXT NOT NULL DEFAULT '',
+        target_id TEXT NOT NULL DEFAULT '',
+        details_json TEXT NOT NULL DEFAULT '{}',
+        ip_hash TEXT NOT NULL DEFAULT '',
+        user_agent TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(admin_user_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS registration_applications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        phone TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        social_name TEXT NOT NULL,
+        inviter_user_id INTEGER NOT NULL,
+        referral_version INTEGER NOT NULL,
+        primary_course TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        terms_version TEXT NOT NULL DEFAULT '2026-08-09',
+        guardian_confirmed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        reviewed_at TEXT,
+        reviewed_by INTEGER,
+        rejection_reason TEXT NOT NULL DEFAULT '',
+        FOREIGN KEY(inviter_user_id) REFERENCES users(id),
+        FOREIGN KEY(reviewed_by) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS referral_links (
+        user_id INTEGER PRIMARY KEY,
+        version INTEGER NOT NULL DEFAULT 1,
+        active INTEGER NOT NULL DEFAULT 1,
+        success_count INTEGER NOT NULL DEFAULT 0,
+        max_uses INTEGER NOT NULL DEFAULT 20,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS referrals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        inviter_user_id INTEGER NOT NULL,
+        invitee_user_id INTEGER NOT NULL UNIQUE,
+        referral_version INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(inviter_user_id) REFERENCES users(id),
+        FOREIGN KEY(invitee_user_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS friendships (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_low_id INTEGER NOT NULL,
+        user_high_id INTEGER NOT NULL,
+        primary_course TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        CHECK(user_low_id < user_high_id),
+        UNIQUE(user_low_id, user_high_id),
+        FOREIGN KEY(user_low_id) REFERENCES users(id),
+        FOREIGN KEY(user_high_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS friend_weekly_challenges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        friendship_id INTEGER NOT NULL,
+        week_key TEXT NOT NULL,
+        primary_course TEXT NOT NULL,
+        required_study_days INTEGER NOT NULL DEFAULT 3,
+        required_answers INTEGER NOT NULL DEFAULT 30,
+        status TEXT NOT NULL DEFAULT 'active',
+        completed_at TEXT,
+        UNIQUE(friendship_id, week_key),
+        FOREIGN KEY(friendship_id) REFERENCES friendships(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS friend_pk_bonus_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        friendship_id INTEGER NOT NULL,
+        week_key TEXT NOT NULL,
+        points INTEGER NOT NULL DEFAULT 20,
+        unique_key TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id),
+        FOREIGN KEY(friendship_id) REFERENCES friendships(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS friend_badges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        friendship_id INTEGER NOT NULL,
+        week_key TEXT NOT NULL,
+        badge_key TEXT NOT NULL DEFAULT 'weekly-coop',
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(user_id, friendship_id, week_key, badge_key),
+        FOREIGN KEY(user_id) REFERENCES users(id),
+        FOREIGN KEY(friendship_id) REFERENCES friendships(id)
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_social_name ON users(social_name) WHERE social_name IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_application_phone
+        ON registration_applications(phone) WHERE status = 'pending';
+      CREATE INDEX IF NOT EXISTS idx_audit_created_at ON admin_audit_logs(created_at);
+      CREATE INDEX IF NOT EXISTS idx_applications_status_created ON registration_applications(status, created_at);
+      CREATE INDEX IF NOT EXISTS idx_reward_events_user_created ON reward_events(user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_chinese_reward_events_user_created ON chinese_reward_events(user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_friendships_low ON friendships(user_low_id);
+      CREATE INDEX IF NOT EXISTS idx_friendships_high ON friendships(user_high_id);
+    `);
+
+    const users = db.prepare("SELECT id, role FROM users").all();
+    const englishActivity = db.prepare(`
+      SELECT COALESCE(SUM(read_count + answer_count), 0) AS score FROM word_progress WHERE user_id = ?
+    `);
+    const chineseActivity = db.prepare(`
+      SELECT COALESCE(SUM(read_count + answer_count), 0) AS score FROM chinese_word_progress WHERE user_id = ?
+    `);
+    const updateUser = db.prepare(`
+      UPDATE users
+      SET access_tier = 'founder_trial', trial_expires_at = NULL,
+          primary_course = ?, social_name = ?
+      WHERE id = ?
+    `);
+    for (const user of users) {
+      const course = user.role === "admin" || englishActivity.get(user.id).score >= chineseActivity.get(user.id).score
+        ? "english"
+        : "chinese";
+      updateUser.run(course, generatedSocialName(user.id), user.id);
+    }
+    markMigration(version);
+  })();
 }
 
 function initDb() {
@@ -415,22 +604,42 @@ function initDb() {
       FOREIGN KEY(user_id) REFERENCES users(id)
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version TEXT PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    );
+  `);
   const userColumns = db.prepare("PRAGMA table_info(users)").all().map((column) => column.name);
   if (!userColumns.includes("password_reset_required")) {
     db.exec("ALTER TABLE users ADD COLUMN password_reset_required INTEGER NOT NULL DEFAULT 0");
   }
+  applyPublicBetaMigration();
 }
 
 function ensureAdmin() {
-  const count = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'").get().count;
-  if (count > 0) return;
+  const admins = db.prepare("SELECT id, social_name FROM users WHERE role = 'admin'").all();
+  if (admins.length > 0) {
+    const repair = db.prepare(`
+      UPDATE users SET access_tier = 'founder_trial', trial_expires_at = NULL,
+        primary_course = 'english', social_name = COALESCE(social_name, ?)
+      WHERE id = ?
+    `);
+    for (const admin of admins) repair.run(generatedSocialName(admin.id), admin.id);
+    return;
+  }
   const username = process.env.ADMIN_USERNAME || "admin";
   const password = process.env.ADMIN_PASSWORD || "admin123456";
+  if (process.env.NODE_ENV === "production" && password.length < 12) {
+    throw new Error("ADMIN_PASSWORD must contain at least 12 characters when creating the production administrator");
+  }
   const phone = normalizePhone(process.env.ADMIN_PHONE || "13800000000");
-  db.prepare(`
+  const result = db.prepare(`
     INSERT INTO users (username, password_hash, nickname, phone, role, status, created_at)
     VALUES (?, ?, ?, ?, 'admin', 'active', ?)
   `).run(username, bcrypt.hashSync(password, 10), "管理员", phone, now());
+  db.prepare("UPDATE users SET social_name = ?, access_tier = 'founder_trial', primary_course = 'english' WHERE id = ?")
+    .run(generatedSocialName(result.lastInsertRowid), result.lastInsertRowid);
 }
 
 function loadThemes() {
@@ -469,6 +678,169 @@ const themeMap = new Map(themes.map((theme) => [theme.id, theme]));
 const chineseThemes = loadChineseThemes();
 const chineseThemeMap = new Map(chineseThemes.map((theme) => [theme.id, theme]));
 
+const freeThemeIds = {
+  english: new Set(["animals", "tools", "concepts"]),
+  chinese: new Set(chineseThemes.filter((theme) => ["Animal", "Food"].includes(theme.title)).map((theme) => theme.id))
+};
+
+function shanghaiDateKey(value = new Date()) {
+  const shifted = new Date(value.getTime() + 8 * 60 * 60 * 1000);
+  return shifted.toISOString().slice(0, 10);
+}
+
+function weekRange(value = new Date()) {
+  const shifted = new Date(value.getTime() + 8 * 60 * 60 * 1000);
+  const day = shifted.getUTCDay() || 7;
+  const mondayLocal = new Date(Date.UTC(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth(),
+    shifted.getUTCDate() - day + 1
+  ));
+  const start = new Date(mondayLocal.getTime() - 8 * 60 * 60 * 1000);
+  const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return { weekKey: mondayLocal.toISOString().slice(0, 10), start: start.toISOString(), end: end.toISOString() };
+}
+
+function userAccessState(user, at = new Date()) {
+  if (!user) return "expired";
+  if (user.role === "admin" || user.access_tier === "founder_trial") return "founder_trial";
+  if (!user.trial_expires_at || new Date(user.trial_expires_at) <= at) return "expired";
+  return "free_trial";
+}
+
+function courseThemeList(course) {
+  return course === "chinese" ? chineseThemes : themes;
+}
+
+function allowedThemeIds(user, course) {
+  if (!user) return [];
+  if (user.role === "admin") return courseThemeList(course).map((theme) => theme.id);
+  if (user.primary_course !== course || userAccessState(user) === "expired") return [];
+  if (user.access_tier === "founder_trial") return courseThemeList(course).map((theme) => theme.id);
+  return [...freeThemeIds[course]];
+}
+
+function learningAccessError(user, course, themeId) {
+  if (user.role === "admin") return null;
+  if (userAccessState(user) === "expired") {
+    return { status: 403, code: "TRIAL_EXPIRED", error: "体验已到期，请联系管理员" };
+  }
+  if (user.primary_course !== course) {
+    return { status: 403, code: "COURSE_LOCKED", error: "该课程不属于你的当前学习方向" };
+  }
+  if (themeId && !allowedThemeIds(user, course).includes(themeId)) {
+    return { status: 403, code: "THEME_LOCKED", error: "该主题尚未解锁" };
+  }
+  return null;
+}
+
+function enforceLearningAccess(req, res, course, themeId) {
+  if (!accessControlEnforced) return true;
+  const problem = learningAccessError(req.user, course, themeId);
+  if (!problem) return true;
+  res.status(problem.status).json({ code: problem.code, error: problem.error });
+  return false;
+}
+
+function canonicalTtsAllowed(user, lang, text) {
+  const course = lang === "zh" ? "chinese" : "english";
+  if (accessControlEnforced && learningAccessError(user, course)) return false;
+  const allowed = new Set(accessControlEnforced
+    ? allowedThemeIds(user, course)
+    : courseThemeList(course).map((theme) => theme.id));
+  const normalized = String(text || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return courseThemeList(course).some((theme) => {
+    if (!allowed.has(theme.id)) return false;
+    return theme.items.some((item) => {
+      const candidate = course === "chinese" ? item.chinese : item.word;
+      return String(candidate || "").trim().toLowerCase().replace(/\s+/g, " ") === normalized;
+    });
+  });
+}
+
+function auditIpHash(req) {
+  const secret = process.env.AUDIT_HASH_SECRET || process.env.SESSION_SECRET || "dev-audit-secret";
+  return hmacSha256(secret, String(req.ip || req.socket?.remoteAddress || ""), "hex").slice(0, 24);
+}
+
+function auditAdmin(req, action, targetType = "", targetId = "", details = {}) {
+  db.prepare(`
+    INSERT INTO admin_audit_logs (
+      admin_user_id, action, target_type, target_id, details_json, ip_hash, user_agent, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    req.user?.id || null,
+    action,
+    targetType,
+    String(targetId || ""),
+    JSON.stringify(details),
+    auditIpHash(req),
+    String(req.get("user-agent") || "").slice(0, 255),
+    now()
+  );
+}
+
+function cleanupAuditLogs() {
+  const cutoff = new Date(Date.now() - auditRetentionDays * 24 * 60 * 60 * 1000).toISOString();
+  db.prepare("DELETE FROM admin_audit_logs WHERE created_at < ?").run(cutoff);
+}
+
+function limiterHash(value) {
+  const secret = process.env.RATE_LIMIT_SECRET || process.env.SESSION_SECRET || "dev-rate-limit-secret";
+  return hmacSha256(secret, String(value || ""), "hex").slice(0, 32);
+}
+
+const loginIpCounter = createWindowCounter({ windowMs: 15 * 60 * 1000, max: 30 });
+const loginPhoneCounter = createWindowCounter({ windowMs: 15 * 60 * 1000, max: 8 });
+const registerIpCounter = createWindowCounter({ windowMs: 60 * 60 * 1000, max: 10 });
+const registerPhoneCounter = createWindowCounter({ windowMs: 24 * 60 * 60 * 1000, max: 3 });
+const ttsUserCounter = createWindowCounter({ windowMs: 10 * 60 * 1000, max: 180 });
+const ttsIpCounter = createWindowCounter({ windowMs: 10 * 60 * 1000, max: 300 });
+const ttsGenerationCounter = createWindowCounter({ windowMs: 60 * 60 * 1000, max: 120 });
+
+const limitLoginIp = rateLimitMiddleware({
+  counter: loginIpCounter,
+  key: (req) => `login-ip:${limiterHash(req.ip)}`,
+  code: "LOGIN_IP_RATE_LIMITED",
+  message: "登录尝试过于频繁，请稍后再试"
+});
+const limitLoginPhone = rateLimitMiddleware({
+  counter: loginPhoneCounter,
+  key: (req) => {
+    const phone = normalizePhone(req.body?.phone || req.body?.username);
+    return isValidPhone(phone) ? `login-phone:${limiterHash(phone)}` : "";
+  },
+  code: "LOGIN_PHONE_RATE_LIMITED",
+  message: "该手机号登录尝试过于频繁，请稍后再试"
+});
+const limitRegisterIp = rateLimitMiddleware({
+  counter: registerIpCounter,
+  key: (req) => `register-ip:${limiterHash(req.ip)}`,
+  code: "REGISTER_IP_RATE_LIMITED",
+  message: "注册申请过于频繁，请稍后再试"
+});
+const limitRegisterPhone = rateLimitMiddleware({
+  counter: registerPhoneCounter,
+  key: (req) => {
+    const phone = normalizePhone(req.body?.phone);
+    return isValidPhone(phone) ? `register-phone:${limiterHash(phone)}` : "";
+  },
+  code: "REGISTER_PHONE_RATE_LIMITED",
+  message: "该手机号提交申请过于频繁，请明天再试"
+});
+const limitTtsUser = rateLimitMiddleware({
+  counter: ttsUserCounter,
+  key: (req) => `tts-user:${req.user.id}`,
+  code: "TTS_USER_RATE_LIMITED",
+  message: "语音请求过于频繁，请稍后再试"
+});
+const limitTtsIp = rateLimitMiddleware({
+  counter: ttsIpCounter,
+  key: (req) => `tts-ip:${limiterHash(req.ip)}`,
+  code: "TTS_IP_RATE_LIMITED",
+  message: "当前网络的语音请求过于频繁，请稍后再试"
+});
+
 function publicUser(user) {
   if (!user) return null;
   return {
@@ -478,6 +850,17 @@ function publicUser(user) {
     phone: user.phone,
     role: user.role,
     status: user.status,
+    accountStatus: user.status,
+    accessState: userAccessState(user),
+    accessTier: user.access_tier,
+    trialExpiresAt: user.trial_expires_at,
+    primaryCourse: user.primary_course,
+    socialName: user.social_name,
+    allowedThemeIds: {
+      english: allowedThemeIds(user, "english"),
+      chinese: allowedThemeIds(user, "chinese")
+    },
+    accessControlEnforced,
     passwordResetRequired: Boolean(user.password_reset_required)
   };
 }
@@ -487,16 +870,30 @@ function currentUser(req) {
   return db.prepare("SELECT * FROM users WHERE id = ? AND status = 'active'").get(req.session.userId) || null;
 }
 
+function sessionUser(req) {
+  if (!req.session.userId) return null;
+  return db.prepare("SELECT * FROM users WHERE id = ?").get(req.session.userId) || null;
+}
+
+function establishSession(req, userId, callback) {
+  req.session.regenerate((error) => {
+    if (error) return callback(error);
+    req.session.userId = userId;
+    return req.session.save(callback);
+  });
+}
+
 function requireAuth(req, res, next) {
-  const user = currentUser(req);
+  const user = sessionUser(req);
   if (!user) return res.status(401).json({ error: "请先登录" });
+  if (user.status !== "active") return res.status(403).json({ code: "ACCOUNT_DISABLED", error: "账号已被禁用，请联系管理员" });
   req.user = user;
   return next();
 }
 
 function requirePasswordReadyPage(req, res, next) {
   const user = currentUser(req);
-  const returnPath = req.originalUrl.startsWith("/chinese") ? req.originalUrl : "";
+  const returnPath = ["/progress", "/chinese", "/chinese/progress", "/friends", "/access-status"].includes(req.path) ? req.path : "";
   const suffix = returnPath ? `?next=${encodeURIComponent(returnPath)}` : "";
   if (!user) return res.redirect(`/login${suffix}`);
   if (user.password_reset_required) return res.redirect(`/reset-password${suffix}`);
@@ -504,9 +901,24 @@ function requirePasswordReadyPage(req, res, next) {
   return next();
 }
 
+function requireStudyPage(course) {
+  return (req, res, next) => {
+    const user = currentUser(req);
+    const suffix = `?next=${encodeURIComponent(req.originalUrl)}`;
+    if (!user) return res.redirect(`/login${suffix}`);
+    if (user.password_reset_required) return res.redirect(`/reset-password${suffix}`);
+    req.user = user;
+    if (accessControlEnforced && learningAccessError(user, course)) {
+      return res.sendFile(path.join(publicDir, "access-status.html"));
+    }
+    return next();
+  };
+}
+
 function requireAdmin(req, res, next) {
-  const user = currentUser(req);
+  const user = sessionUser(req);
   if (!user) return res.status(401).json({ error: "请先登录" });
+  if (user.status !== "active") return res.status(403).json({ code: "ACCOUNT_DISABLED", error: "账号已被禁用" });
   if (user.role !== "admin") return res.status(403).json({ error: "没有管理员权限" });
   req.user = user;
   return next();
@@ -528,7 +940,7 @@ function requireAdminPage(req, res, next) {
 }
 
 function touchSession(userId, kind, correct) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = shanghaiDateKey();
   const existing = db.prepare("SELECT * FROM study_sessions WHERE user_id = ? AND study_date = ?").get(userId, today);
   if (existing) {
     db.prepare(`
@@ -732,7 +1144,7 @@ function progressSummary(userId) {
 }
 
 function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  return shanghaiDateKey();
 }
 
 function ensureRewardRow(userId) {
@@ -1384,20 +1796,205 @@ function adminCourseOverview(course) {
   };
 }
 
+function referralSecret() {
+  return process.env.REFERRAL_SECRET || process.env.SESSION_SECRET || "dev-referral-secret";
+}
+
+function referralToken(userId, version) {
+  const payload = `${userId}.${version}`;
+  const signature = hmacSha256(referralSecret(), payload, "base64url").slice(0, 32);
+  return `${Buffer.from(payload).toString("base64url")}.${signature}`;
+}
+
+function parseReferralToken(token) {
+  try {
+    const [encoded, signature] = String(token || "").split(".");
+    if (!encoded || !signature) return null;
+    const payload = Buffer.from(encoded, "base64url").toString("utf8");
+    const expected = hmacSha256(referralSecret(), payload, "base64url").slice(0, 32);
+    if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+    const [userIdRaw, versionRaw] = payload.split(".");
+    const userId = Number(userIdRaw);
+    const version = Number(versionRaw);
+    if (!Number.isInteger(userId) || !Number.isInteger(version) || userId <= 0 || version <= 0) return null;
+    return { userId, version };
+  } catch {
+    return null;
+  }
+}
+
+function activeReferralFromToken(token) {
+  const parsed = parseReferralToken(token);
+  if (!parsed) return null;
+  const row = db.prepare(`
+    SELECT r.*, u.social_name, u.primary_course, u.status AS user_status,
+           u.access_tier, u.trial_expires_at, u.role
+    FROM referral_links r
+    JOIN users u ON u.id = r.user_id
+    WHERE r.user_id = ? AND r.version = ?
+  `).get(parsed.userId, parsed.version);
+  if (!row || !row.active || row.user_status !== "active" || row.success_count >= row.max_uses) return null;
+  if (userAccessState(row) === "expired") return null;
+  return row;
+}
+
+function uniqueSocialName() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const candidate = `BlockLearner-${randomCode(4)}`;
+    const user = db.prepare("SELECT 1 FROM users WHERE social_name = ?").get(candidate);
+    const application = db.prepare("SELECT 1 FROM registration_applications WHERE social_name = ? AND status = 'pending'").get(candidate);
+    if (!user && !application) return candidate;
+  }
+  return `BlockLearner-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+}
+
+function createFriendship(userA, userB, course) {
+  const low = Math.min(userA, userB);
+  const high = Math.max(userA, userB);
+  db.prepare(`
+    INSERT OR IGNORE INTO friendships (user_low_id, user_high_id, primary_course, created_at)
+    VALUES (?, ?, ?, ?)
+  `).run(low, high, course, now());
+  return db.prepare("SELECT * FROM friendships WHERE user_low_id = ? AND user_high_id = ?").get(low, high);
+}
+
+function referralUrl(req, userId, version) {
+  const configuredBase = String(process.env.APP_BASE_URL || "").replace(/\/$/, "");
+  const base = configuredBase || `${req.protocol}://${req.get("host")}`;
+  return `${base}/register?ref=${encodeURIComponent(referralToken(userId, version))}`;
+}
+
+function primaryCourseTables(course) {
+  return course === "chinese"
+    ? {
+        rewards: "chinese_reward_events",
+        sessions: "chinese_study_sessions",
+        progress: "chinese_word_progress"
+      }
+    : { rewards: "reward_events", sessions: "study_sessions", progress: "word_progress" };
+}
+
+function friendStats(userId, course, range = weekRange()) {
+  const tables = primaryCourseTables(course);
+  const nextWeekKey = shanghaiDateKey(new Date(range.end));
+  const weeklyEmeralds = db.prepare(`
+    SELECT COALESCE(SUM(exp), 0) AS value FROM ${tables.rewards}
+    WHERE user_id = ? AND created_at >= ? AND created_at < ?
+  `).get(userId, range.start, range.end).value;
+  const bonusPoints = db.prepare(`
+    SELECT COALESCE(SUM(points), 0) AS value FROM friend_pk_bonus_events
+    WHERE user_id = ? AND week_key = ?
+  `).get(userId, range.weekKey).value;
+  const weekly = db.prepare(`
+    SELECT COUNT(*) AS studyDays, COALESCE(SUM(answer_count), 0) AS answers
+    FROM ${tables.sessions}
+    WHERE user_id = ? AND study_date >= ? AND study_date < ?
+  `).get(userId, range.weekKey, nextWeekKey);
+  const lifetime = db.prepare(`
+    SELECT COUNT(*) AS studyDays, COALESCE(SUM(answer_count), 0) AS answers
+    FROM ${tables.sessions} WHERE user_id = ?
+  `).get(userId);
+  const masteredWords = db.prepare(`
+    SELECT COUNT(*) AS value FROM ${tables.progress}
+    WHERE user_id = ? AND mastery_status = 'mastered'
+  `).get(userId).value;
+  return {
+    weekKey: range.weekKey,
+    weeklyEmeralds,
+    pkBonusPoints: bonusPoints,
+    pkScore: weeklyEmeralds + bonusPoints,
+    weeklyStudyDays: weekly.studyDays,
+    weeklyAnswers: weekly.answers,
+    studyDays: lifetime.studyDays,
+    completedQuestions: lifetime.answers,
+    masteredWords
+  };
+}
+
+function friendshipsForUser(userId) {
+  return db.prepare(`
+    SELECT f.*,
+           CASE WHEN f.user_low_id = ? THEN f.user_high_id ELSE f.user_low_id END AS friend_user_id
+    FROM friendships f
+    WHERE f.user_low_id = ? OR f.user_high_id = ?
+    ORDER BY f.created_at DESC
+  `).all(userId, userId, userId);
+}
+
+function ensureWeeklyChallenge(friendship, range = weekRange()) {
+  db.prepare(`
+    INSERT OR IGNORE INTO friend_weekly_challenges (
+      friendship_id, week_key, primary_course, required_study_days, required_answers, status
+    ) VALUES (?, ?, ?, 3, 30, 'active')
+  `).run(friendship.id, range.weekKey, friendship.primary_course);
+  return db.prepare(`
+    SELECT * FROM friend_weekly_challenges WHERE friendship_id = ? AND week_key = ?
+  `).get(friendship.id, range.weekKey);
+}
+
+function evaluateFriendChallenges(userId) {
+  const range = weekRange();
+  const completed = [];
+  for (const friendship of friendshipsForUser(userId)) {
+    const challenge = ensureWeeklyChallenge(friendship, range);
+    if (challenge.status === "completed") continue;
+    const first = friendStats(friendship.user_low_id, friendship.primary_course, range);
+    const second = friendStats(friendship.user_high_id, friendship.primary_course, range);
+    const ready = first.weeklyStudyDays >= challenge.required_study_days
+      && second.weeklyStudyDays >= challenge.required_study_days
+      && first.weeklyAnswers >= challenge.required_answers
+      && second.weeklyAnswers >= challenge.required_answers;
+    if (!ready) continue;
+    db.transaction(() => {
+      const changed = db.prepare(`
+        UPDATE friend_weekly_challenges SET status = 'completed', completed_at = ?
+        WHERE id = ? AND status = 'active'
+      `).run(now(), challenge.id);
+      if (!changed.changes) return;
+      for (const participantId of [friendship.user_low_id, friendship.user_high_id]) {
+        db.prepare(`
+          INSERT OR IGNORE INTO friend_pk_bonus_events (
+            user_id, friendship_id, week_key, points, unique_key, created_at
+          ) VALUES (?, ?, ?, 20, ?, ?)
+        `).run(participantId, friendship.id, range.weekKey, `coop:${participantId}:${friendship.id}:${range.weekKey}`, now());
+        db.prepare(`
+          INSERT OR IGNORE INTO friend_badges (
+            user_id, friendship_id, week_key, badge_key, title, created_at
+          ) VALUES (?, ?, ?, 'weekly-coop', ?, ?)
+        `).run(participantId, friendship.id, range.weekKey, "Weekly Teamwork", now());
+      }
+    })();
+    completed.push({ friendshipId: friendship.id, type: "friend_challenge_completed", points: 20 });
+  }
+  return completed;
+}
+
 initDb();
 ensureAdmin();
+cleanupAuditLogs();
+const auditCleanupTimer = setInterval(cleanupAuditLogs, 24 * 60 * 60 * 1000);
+auditCleanupTimer.unref?.();
 
 app.disable("x-powered-by");
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), geolocation=(), payment=()");
+  return next();
+});
 app.use(session({
   name: "mer.sid",
-  secret: process.env.SESSION_SECRET || "dev-change-this-session-secret",
+  secret: sessionSecret,
+  store: sessionStore,
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.COOKIE_SECURE === "true",
+    secure: process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production",
     maxAge: 1000 * 60 * 60 * 24 * 14
   }
 }));
@@ -1406,31 +2003,92 @@ app.get("/portal.css", (req, res) => res.sendFile(path.join(publicDir, "portal.c
 app.get("/login", (req, res) => res.sendFile(path.join(publicDir, "login.html")));
 app.get("/admin-login", (req, res) => res.sendFile(path.join(publicDir, "admin-login.html")));
 app.get("/register", (req, res) => res.sendFile(path.join(publicDir, "register.html")));
+app.get("/privacy", (req, res) => res.sendFile(path.join(publicDir, "privacy.html")));
 app.get("/reset-password", requirePageAuth, (req, res) => res.sendFile(path.join(publicDir, "reset-password.html")));
 app.get("/progress", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "progress.html")));
-app.get("/chinese", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "core-words-cn.html")));
+app.get("/", requireStudyPage("english"), (req, res) => res.sendFile(path.join(publicDir, "index.html")));
+app.get("/chinese", requireStudyPage("chinese"), (req, res) => res.sendFile(path.join(publicDir, "core-words-cn.html")));
 app.get("/chinese/progress", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "chinese-progress.html")));
+app.get("/friends", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "friends.html")));
+app.get("/access-status", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "access-status.html")));
 app.get("/admin", requireAdminPage, (req, res) => res.sendFile(path.join(publicDir, "admin.html")));
 
-app.post("/api/auth/register", (req, res) => {
+app.get("/api/referrals/preview", (req, res) => {
+  const referral = activeReferralFromToken(req.query.token);
+  if (!referral) return res.status(404).json({ code: "REFERRAL_INVALID", error: "邀请链接无效或已达到使用上限" });
+  return res.json({
+    socialName: referral.social_name,
+    primaryCourse: referral.primary_course,
+    remainingUses: referral.max_uses - referral.success_count
+  });
+});
+
+app.post("/api/auth/register", limitRegisterIp, limitRegisterPhone, (req, res) => {
   const phone = normalizePhone(req.body.phone);
   const inviteCode = normalizeInvite(req.body.inviteCode);
+  const referralTokenValue = String(req.body.referralToken || "").trim();
   const username = phone;
   const password = String(req.body.password || "");
   const nickname = phone.replace(/^(\d{3})\d{4}(\d{4})$/, "$1****$2");
-  if (!isValidPhone(phone) || !inviteCode || password.length < 6) {
-    return res.status(400).json({ error: "请填写正确手机号、邀请码和至少6位密码" });
+  if (!isValidPhone(phone) || password.length < 8) {
+    return res.status(400).json({ error: "请填写正确手机号和至少8位密码" });
   }
+  if (db.prepare("SELECT id FROM users WHERE phone = ?").get(phone)) return res.status(409).json({ error: "该手机号已注册" });
+
+  if (referralTokenValue) {
+    if (req.body.guardianConfirmed !== true) {
+      return res.status(400).json({ code: "GUARDIAN_CONFIRMATION_REQUIRED", error: "请确认监护人已知情并同意体验规则" });
+    }
+    const referral = activeReferralFromToken(referralTokenValue);
+    if (!referral) return res.status(400).json({ code: "REFERRAL_INVALID", error: "邀请链接无效或已达到使用上限" });
+    const pendingCount = db.prepare(`
+      SELECT COUNT(*) AS count FROM registration_applications
+      WHERE inviter_user_id = ? AND status = 'pending'
+    `).get(referral.user_id).count;
+    if (pendingCount >= 5) {
+      return res.status(429).json({ code: "REFERRAL_PENDING_LIMIT", error: "该邀请人当前待审核申请较多，请稍后再试" });
+    }
+    if (db.prepare("SELECT id FROM registration_applications WHERE phone = ? AND status = 'pending'").get(phone)) {
+      return res.status(409).json({ code: "APPLICATION_PENDING", error: "该手机号已有待审核申请" });
+    }
+    const socialName = uniqueSocialName();
+    const result = db.prepare(`
+      INSERT INTO registration_applications (
+        phone, password_hash, social_name, inviter_user_id, referral_version,
+        primary_course, status, terms_version, guardian_confirmed_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'pending', '2026-08-09', ?, ?)
+    `).run(
+      phone,
+      bcrypt.hashSync(password, 10),
+      socialName,
+      referral.user_id,
+      referral.version,
+      referral.primary_course,
+      now(),
+      now()
+    );
+    return res.status(202).json({
+      ok: true,
+      pendingReview: true,
+      applicationId: result.lastInsertRowid,
+      socialName,
+      primaryCourse: referral.primary_course
+    });
+  }
+
+  if (!inviteCode) return res.status(400).json({ error: "请填写邀请码" });
   const whitelist = db.prepare("SELECT * FROM phone_whitelist WHERE phone = ?").get(phone);
   if (!whitelist || whitelist.status !== "unused") return res.status(400).json({ error: "手机号不在白名单或邀请码已失效" });
   if (whitelist.invite_hash !== hashInvite(inviteCode)) return res.status(400).json({ error: "邀请码不正确" });
-  if (db.prepare("SELECT id FROM users WHERE phone = ?").get(phone)) return res.status(409).json({ error: "该手机号已注册" });
 
   const tx = db.transaction(() => {
+    const socialName = uniqueSocialName();
     const result = db.prepare(`
-      INSERT INTO users (username, password_hash, nickname, phone, role, status, password_reset_required, created_at)
-      VALUES (?, ?, ?, ?, 'user', 'active', 0, ?)
-    `).run(username, bcrypt.hashSync(password, 10), nickname, phone, now());
+      INSERT INTO users (
+        username, password_hash, nickname, phone, role, status, password_reset_required,
+        access_tier, trial_expires_at, primary_course, social_name, created_at
+      ) VALUES (?, ?, ?, ?, 'user', 'active', 0, 'founder_trial', NULL, ?, ?, ?)
+    `).run(username, bcrypt.hashSync(password, 10), nickname, phone, whitelist.primary_course || "english", socialName, now());
     db.prepare(`
       UPDATE phone_whitelist
       SET status = 'used', used_by = ?, used_at = ?, invite_display = ''
@@ -1439,29 +2097,44 @@ app.post("/api/auth/register", (req, res) => {
     return result.lastInsertRowid;
   });
   const userId = tx();
-  req.session.userId = userId;
-  return res.json({ ok: true, user: publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(userId)) });
+  return establishSession(req, userId, (error) => {
+    if (error) return res.status(500).json({ error: "注册成功，但登录会话创建失败，请重新登录" });
+    return res.json({ ok: true, user: publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(userId)) });
+  });
 });
 
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", limitLoginIp, limitLoginPhone, (req, res) => {
   const login = String(req.body.phone || req.body.username || "").trim();
   const phone = normalizePhone(login);
   const password = String(req.body.password || "");
   const user = isValidPhone(phone)
     ? db.prepare("SELECT * FROM users WHERE phone = ?").get(phone)
     : db.prepare("SELECT * FROM users WHERE username = ?").get(login);
-  if (!user || user.status !== "active" || !bcrypt.compareSync(password, user.password_hash)) {
+  if (!user) {
+    const pending = isValidPhone(phone)
+      ? db.prepare("SELECT id FROM registration_applications WHERE phone = ? AND status = 'pending'").get(phone)
+      : null;
+    if (pending) return res.status(403).json({ code: "ACCOUNT_PENDING_REVIEW", error: "注册申请正在等待管理员审核" });
+  }
+  const passwordMatches = Boolean(user && bcrypt.compareSync(password, user.password_hash));
+  if (user && passwordMatches && user.status !== "active") {
+    return res.status(403).json({ code: "ACCOUNT_DISABLED", error: "账号已被禁用，请联系管理员" });
+  }
+  if (!user || !passwordMatches) {
     return res.status(401).json({ error: "账号或密码不正确" });
   }
   db.prepare("UPDATE users SET last_login_at = ? WHERE id = ?").run(now(), user.id);
-  req.session.userId = user.id;
-  return res.json({ ok: true, user: publicUser(user) });
+  if (isValidPhone(phone)) loginPhoneCounter.reset(`login-phone:${limiterHash(phone)}`);
+  return establishSession(req, user.id, (error) => {
+    if (error) return res.status(500).json({ error: "登录会话创建失败，请重试" });
+    return res.json({ ok: true, user: publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(user.id)) });
+  });
 });
 
 app.post("/api/auth/change-password", requireAuth, (req, res) => {
   const currentPassword = String(req.body.currentPassword || "");
   const newPassword = String(req.body.newPassword || "");
-  if (newPassword.length < 6) return res.status(400).json({ error: "新密码至少6位" });
+  if (newPassword.length < 8) return res.status(400).json({ error: "新密码至少8位" });
   if (!bcrypt.compareSync(currentPassword, req.user.password_hash)) {
     return res.status(401).json({ error: "当前密码不正确" });
   }
@@ -1475,11 +2148,17 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 app.get("/api/me", requireAuth, (req, res) => res.json({ user: publicUser(req.user) }));
-app.get("/api/themes", requireAuth, (req, res) => res.json({ themes }));
+app.get("/api/themes", requireAuth, (req, res) => {
+  const allowed = new Set(allowedThemeIds(req.user, "english"));
+  return res.json({ themes: themes.map((theme) => ({ ...theme, locked: accessControlEnforced && !allowed.has(theme.id) })) });
+});
 app.get("/api/progress", requireAuth, (req, res) => res.json(progressSummary(req.user.id)));
 app.get("/api/rewards", requireAuth, (req, res) => res.json({ rewardState: rewardSummary(req.user.id) }));
 
-app.get("/api/chinese/themes", requireAuth, (req, res) => res.json({ themes: chineseThemes }));
+app.get("/api/chinese/themes", requireAuth, (req, res) => {
+  const allowed = new Set(allowedThemeIds(req.user, "chinese"));
+  return res.json({ themes: chineseThemes.map((theme) => ({ ...theme, locked: accessControlEnforced && !allowed.has(theme.id) })) });
+});
 app.get("/api/chinese/progress", requireAuth, (req, res) => res.json(chineseProgressSummary(req.user.id)));
 app.get("/api/chinese/rewards", requireAuth, (req, res) => res.json({ rewardState: chineseRewardSummary(req.user.id) }));
 
@@ -1487,6 +2166,7 @@ app.post("/api/chinese/progress/word", requireAuth, (req, res) => {
   try {
     const themeId = String(req.body.themeId || "");
     const itemId = String(req.body.itemId || "");
+    if (!enforceLearningAccess(req, res, "chinese", themeId)) return;
     upsertChineseReadProgress(req.user.id, themeId, itemId);
     const reward = chineseRewardRead(req.user.id, themeId, itemId);
     return res.json({ ok: true, rewardEvents: reward.events, rewardState: reward.state });
@@ -1497,7 +2177,9 @@ app.post("/api/chinese/progress/word", requireAuth, (req, res) => {
 
 app.post("/api/chinese/quiz/next", requireAuth, (req, res) => {
   try {
-    return res.json(chooseChineseQuizItem(req.user.id, String(req.body.themeId || "")));
+    const themeId = String(req.body.themeId || "");
+    if (!enforceLearningAccess(req, res, "chinese", themeId)) return;
+    return res.json(chooseChineseQuizItem(req.user.id, themeId));
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
@@ -1505,12 +2187,16 @@ app.post("/api/chinese/quiz/next", requireAuth, (req, res) => {
 
 app.post("/api/chinese/quiz/answer", requireAuth, (req, res) => {
   try {
-    return res.json(answerChineseQuiz(
+    const themeId = String(req.body.themeId || "");
+    if (!enforceLearningAccess(req, res, "chinese", themeId)) return;
+    const answer = answerChineseQuiz(
       req.user.id,
-      String(req.body.themeId || ""),
+      themeId,
       String(req.body.itemId || ""),
       String(req.body.selectedChinese || "")
-    ));
+    );
+    answer.friendEvents = evaluateFriendChallenges(req.user.id);
+    return res.json(answer);
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
@@ -1519,34 +2205,59 @@ app.post("/api/chinese/quiz/answer", requireAuth, (req, res) => {
 app.post("/api/progress/word", requireAuth, (req, res) => {
   const themeId = String(req.body.themeId || "");
   const word = String(req.body.word || "");
+  if (!enforceLearningAccess(req, res, "english", themeId)) return;
   if (!themeMap.get(themeId)) return res.status(400).json({ error: "未知主题" });
   upsertReadProgress(req.user.id, themeId, word);
   const reward = rewardRead(req.user.id, themeId, word);
   return res.json({ ok: true, rewardEvents: reward.events, rewardState: reward.state });
 });
 
-app.get("/api/tts", requireAuth, async (req, res) => {
+app.get("/api/tts", requireAuth, limitTtsUser, limitTtsIp, async (req, res) => {
   try {
     const text = String(req.query.text || "");
     const lang = String(req.query.lang || "").trim().toLowerCase() === "zh" ? "zh" : "en";
+    const course = lang === "zh" ? "chinese" : "english";
+    if (!enforceLearningAccess(req, res, course)) return;
+    if (!canonicalTtsAllowed(req.user, lang, text)) {
+      return res.status(403).json({ code: "TTS_TEXT_NOT_ALLOWED", error: "该语音内容不在已解锁词库中" });
+    }
     const requestedVoice = String(req.query.voice || "").trim();
     const voiceType = getTencentVoiceType(lang);
-    const audio = await ensureTtsAudio(text, { lang });
+    const audio = await ensureTtsAudio(text, {
+      lang,
+      beforeGenerate: () => {
+        const result = ttsGenerationCounter.consume(`tts-generate:${req.user.id}`);
+        if (!result.allowed) {
+          const error = new Error("新语音生成额度已达到上限，请稍后再试");
+          error.status = 429;
+          error.code = "TTS_GENERATION_RATE_LIMITED";
+          error.retryAfter = result.retryAfter;
+          throw error;
+        }
+      }
+    });
     res.setHeader("Content-Type", audio.contentType);
     res.setHeader("X-TTS-Lang", lang);
     res.setHeader("X-TTS-Voice-Type", voiceType === undefined ? "default" : String(voiceType));
     if (requestedVoice) res.setHeader("X-TTS-Requested-Voice", requestedVoice);
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("X-TTS-Cache", audio.cached ? "HIT" : "MISS");
+    res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
     return res.sendFile(audio.filePath);
   } catch (error) {
     res.setHeader("Cache-Control", "no-store");
-    return res.status(503).json({ error: "腾讯云 TTS 暂不可用", detail: error.message });
+    if (error.status === 429) {
+      res.setHeader("Retry-After", String(error.retryAfter || 60));
+      return res.status(429).json({ code: error.code, error: error.message, retryAfter: error.retryAfter });
+    }
+    return res.status(503).json({ code: "TTS_UNAVAILABLE", error: "腾讯云 TTS 暂不可用", detail: error.message });
   }
 });
 
 app.post("/api/quiz/next", requireAuth, (req, res) => {
   try {
-    return res.json(chooseQuizItem(req.user.id, String(req.body.themeId || "")));
+    const themeId = String(req.body.themeId || "");
+    if (!enforceLearningAccess(req, res, "english", themeId)) return;
+    return res.json(chooseQuizItem(req.user.id, themeId));
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
@@ -1554,10 +2265,123 @@ app.post("/api/quiz/next", requireAuth, (req, res) => {
 
 app.post("/api/quiz/answer", requireAuth, (req, res) => {
   try {
-    return res.json(answerQuiz(req.user.id, String(req.body.themeId || ""), String(req.body.word || ""), String(req.body.selectedCn || "")));
+    const themeId = String(req.body.themeId || "");
+    if (!enforceLearningAccess(req, res, "english", themeId)) return;
+    const answer = answerQuiz(req.user.id, themeId, String(req.body.word || ""), String(req.body.selectedCn || ""));
+    answer.friendEvents = evaluateFriendChallenges(req.user.id);
+    return res.json(answer);
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
+});
+
+app.get("/api/referrals/link", requireAuth, (req, res) => {
+  const row = db.prepare("SELECT * FROM referral_links WHERE user_id = ?").get(req.user.id);
+  if (!row) return res.json({ link: null, active: false, successCount: 0, maxUses: referralLimit });
+  return res.json({
+    link: referralUrl(req, req.user.id, row.version),
+    active: Boolean(row.active),
+    successCount: row.success_count,
+    maxUses: row.max_uses,
+    remainingUses: Math.max(0, row.max_uses - row.success_count)
+  });
+});
+
+app.post("/api/referrals/link", requireAuth, (req, res) => {
+  if (userAccessState(req.user) === "expired") {
+    return res.status(403).json({ code: "TRIAL_EXPIRED", error: "体验到期后不能生成新邀请" });
+  }
+  db.prepare(`
+    INSERT OR IGNORE INTO referral_links (user_id, version, active, success_count, max_uses, created_at, updated_at)
+    VALUES (?, 1, 1, 0, ?, ?, ?)
+  `).run(req.user.id, referralLimit, now(), now());
+  const row = db.prepare("SELECT * FROM referral_links WHERE user_id = ?").get(req.user.id);
+  return res.json({
+    link: referralUrl(req, req.user.id, row.version),
+    active: Boolean(row.active),
+    successCount: row.success_count,
+    maxUses: row.max_uses,
+    remainingUses: Math.max(0, row.max_uses - row.success_count)
+  });
+});
+
+app.post("/api/referrals/link/regenerate", requireAuth, (req, res) => {
+  if (userAccessState(req.user) === "expired") {
+    return res.status(403).json({ code: "TRIAL_EXPIRED", error: "体验到期后不能换新邀请链接" });
+  }
+  db.prepare(`
+    INSERT INTO referral_links (user_id, version, active, success_count, max_uses, created_at, updated_at)
+    VALUES (?, 1, 1, 0, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET version = version + 1, active = 1, updated_at = excluded.updated_at
+  `).run(req.user.id, referralLimit, now(), now());
+  const row = db.prepare("SELECT * FROM referral_links WHERE user_id = ?").get(req.user.id);
+  return res.json({ link: referralUrl(req, req.user.id, row.version), active: true, successCount: row.success_count, maxUses: row.max_uses });
+});
+
+app.patch("/api/referrals/link", requireAuth, (req, res) => {
+  const active = req.body.active === true ? 1 : 0;
+  if (active && userAccessState(req.user) === "expired") {
+    return res.status(403).json({ code: "TRIAL_EXPIRED", error: "体验到期后不能恢复邀请链接" });
+  }
+  const result = db.prepare("UPDATE referral_links SET active = ?, updated_at = ? WHERE user_id = ?")
+    .run(active, now(), req.user.id);
+  if (!result.changes) return res.status(404).json({ error: "尚未生成邀请链接" });
+  return res.json({ ok: true, active: Boolean(active) });
+});
+
+app.get("/api/friends/summary", requireAuth, (req, res) => {
+  const requested = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.week || ""))
+    ? new Date(`${req.query.week}T00:00:00+08:00`)
+    : new Date();
+  const range = weekRange(requested);
+  evaluateFriendChallenges(req.user.id);
+  const me = friendStats(req.user.id, req.user.primary_course, range);
+  const friends = friendshipsForUser(req.user.id).map((friendship) => {
+    const friend = db.prepare("SELECT id, social_name, primary_course FROM users WHERE id = ? AND status = 'active'")
+      .get(friendship.friend_user_id);
+    if (!friend) return null;
+    const stats = friendStats(friend.id, friendship.primary_course, range);
+    return {
+      friendshipId: friendship.id,
+      userId: friend.id,
+      socialName: friend.social_name,
+      primaryCourse: friendship.primary_course,
+      stats,
+      pk: {
+        myScore: me.pkScore,
+        friendScore: stats.pkScore,
+        difference: Math.abs(me.pkScore - stats.pkScore),
+        result: me.pkScore === stats.pkScore ? "tie" : me.pkScore > stats.pkScore ? "leading" : "behind"
+      }
+    };
+  }).filter(Boolean);
+  return res.json({ weekKey: range.weekKey, primaryCourse: req.user.primary_course, me, friends });
+});
+
+app.get("/api/friends/challenge", requireAuth, (req, res) => {
+  const range = weekRange();
+  evaluateFriendChallenges(req.user.id);
+  const challenges = friendshipsForUser(req.user.id).map((friendship) => {
+    const challenge = ensureWeeklyChallenge(friendship, range);
+    const friendId = friendship.friend_user_id;
+    const friend = db.prepare("SELECT social_name FROM users WHERE id = ?").get(friendId);
+    return {
+      friendshipId: friendship.id,
+      friendUserId: friendId,
+      friendSocialName: friend?.social_name || "Friend",
+      status: challenge.status,
+      requiredStudyDays: challenge.required_study_days,
+      requiredAnswers: challenge.required_answers,
+      me: friendStats(req.user.id, friendship.primary_course, range),
+      friend: friendStats(friendId, friendship.primary_course, range),
+      reward: { badge: "Weekly Teamwork", pkBonusPoints: 20 }
+    };
+  });
+  const badges = db.prepare(`
+    SELECT week_key AS weekKey, badge_key AS badgeKey, title, created_at AS createdAt
+    FROM friend_badges WHERE user_id = ? ORDER BY created_at DESC LIMIT 20
+  `).all(req.user.id);
+  return res.json({ weekKey: range.weekKey, challenges, badges });
 });
 
 app.get("/api/admin/whitelist", requireAdmin, (req, res) => {
@@ -1568,7 +2392,8 @@ app.get("/api/admin/whitelist", requireAdmin, (req, res) => {
   const safePage = Math.min(page, totalPages);
   const offset = (safePage - 1) * pageSize;
   const rows = db.prepare(`
-    SELECT id, phone, note, invite_display AS inviteCode, status, created_at, used_at, disabled_at
+    SELECT id, phone, note, invite_display AS inviteCode, status, primary_course AS primaryCourse,
+           created_at, used_at, disabled_at
     FROM phone_whitelist ORDER BY created_at DESC
     LIMIT ? OFFSET ?
   `).all(pageSize, offset);
@@ -1578,14 +2403,17 @@ app.get("/api/admin/whitelist", requireAdmin, (req, res) => {
 app.post("/api/admin/whitelist", requireAdmin, (req, res) => {
   const phone = normalizePhone(req.body.phone);
   const note = String(req.body.note || "").trim();
+  const primaryCourse = req.body.primaryCourse === "chinese" ? "chinese" : "english";
   if (!isValidPhone(phone)) return res.status(400).json({ error: "请输入正确的11位手机号" });
   const code = randomCode(6);
   try {
     const result = db.prepare(`
-      INSERT INTO phone_whitelist (phone, note, invite_hash, invite_display, status, created_by, created_at)
-      VALUES (?, ?, ?, ?, 'unused', ?, ?)
-    `).run(phone, note, hashInvite(code), code, req.user.id, now());
-    return res.json({ id: result.lastInsertRowid, phone, note, inviteCode: code, status: "unused" });
+      INSERT INTO phone_whitelist (
+        phone, note, invite_hash, invite_display, status, primary_course, created_by, created_at
+      ) VALUES (?, ?, ?, ?, 'unused', ?, ?, ?)
+    `).run(phone, note, hashInvite(code), code, primaryCourse, req.user.id, now());
+    auditAdmin(req, "whitelist.create", "phone_whitelist", result.lastInsertRowid, { phoneLast4: phone.slice(-4), primaryCourse });
+    return res.json({ id: result.lastInsertRowid, phone, note, inviteCode: code, status: "unused", primaryCourse });
   } catch (error) {
     return res.status(409).json({ error: "该手机号已在白名单中" });
   }
@@ -1608,6 +2436,15 @@ app.patch("/api/admin/whitelist/:id", requireAdmin, (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, "note")) {
     db.prepare("UPDATE phone_whitelist SET note = ? WHERE id = ?").run(note, id);
   }
+  if (req.body.primaryCourse === "english" || req.body.primaryCourse === "chinese") {
+    db.prepare("UPDATE phone_whitelist SET primary_course = ? WHERE id = ? AND status != 'used'")
+      .run(req.body.primaryCourse, id);
+  }
+  auditAdmin(req, "whitelist.update", "phone_whitelist", id, {
+    status: req.body.status || undefined,
+    noteChanged: Object.prototype.hasOwnProperty.call(req.body, "note"),
+    primaryCourse: req.body.primaryCourse
+  });
   return res.json({ ok: true });
 });
 
@@ -1620,21 +2457,47 @@ app.get("/api/admin/users", requireAdmin, (req, res) => {
   const pageSize = Math.min(50, positiveInt(req.query.pageSize, 10));
   const page = positiveInt(req.query.page, 1);
   const phone = normalizePhone(req.query.phone);
-  const where = phone ? "WHERE phone LIKE ?" : "";
-  const values = phone ? [`%${phone}%`] : [];
+  const filters = [];
+  const values = [];
+  if (phone) {
+    filters.push("phone LIKE ?");
+    values.push(`%${phone}%`);
+  }
+  if (["english", "chinese"].includes(req.query.primaryCourse)) {
+    filters.push("primary_course = ?");
+    values.push(req.query.primaryCourse);
+  }
+  if (["free_trial", "founder_trial"].includes(req.query.accessTier)) {
+    filters.push("access_tier = ?");
+    values.push(req.query.accessTier);
+  }
+  if (req.query.accessState === "founder_trial") filters.push("access_tier = 'founder_trial'");
+  if (req.query.accessState === "free_trial") {
+    filters.push("access_tier = 'free_trial' AND trial_expires_at IS NOT NULL AND trial_expires_at > ?");
+    values.push(now());
+  }
+  if (req.query.accessState === "expired") {
+    filters.push("access_tier = 'free_trial' AND (trial_expires_at IS NULL OR trial_expires_at <= ?)");
+    values.push(now());
+  }
+  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
   const total = db.prepare(`SELECT COUNT(*) AS count FROM users ${where}`).get(...values).count;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
   const offset = (safePage - 1) * pageSize;
   const users = db.prepare(`
-    SELECT id, username, nickname, phone, role, status, password_reset_required, created_at, last_login_at
+    SELECT id, username, nickname, phone, role, status, password_reset_required,
+           access_tier, trial_expires_at, primary_course, social_name, created_at, last_login_at,
+           COALESCE((SELECT success_count FROM referral_links WHERE user_id = users.id), 0) AS referral_success_count,
+           COALESCE((SELECT max_uses FROM referral_links WHERE user_id = users.id), ?) AS referral_max_uses
     FROM users ${where}
     ORDER BY created_at DESC
     LIMIT ? OFFSET ?
-  `).all(...values, pageSize, offset);
+  `).all(referralLimit, ...values, pageSize, offset);
   const course = req.query.course === "chinese" ? "chinese" : "english";
   const items = users.map((user) => ({
     ...user,
+    accessState: userAccessState(user),
     progress: course === "chinese" ? chineseProgressSummary(user.id).totals : progressSummary(user.id).totals
   }));
   return res.json({ items, page: safePage, pageSize, total, totalPages, course });
@@ -1686,7 +2549,155 @@ app.patch("/api/admin/users/:id", requireAdmin, (req, res) => {
   if (id === req.user.id) return res.status(400).json({ error: "不能禁用当前管理员账号" });
   const status = req.body.status === "disabled" ? "disabled" : "active";
   db.prepare("UPDATE users SET status = ? WHERE id = ?").run(status, id);
+  auditAdmin(req, "user.account_status", "user", id, { status });
   return res.json({ ok: true });
+});
+
+app.patch("/api/admin/users/:id/access", requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+  if (!user) return res.status(404).json({ error: "用户不存在" });
+  if (user.role === "admin") return res.status(400).json({ error: "管理员账号不使用体验权益" });
+  const requestedState = ["free_trial", "founder_trial", "expired"].includes(req.body.accessState)
+    ? req.body.accessState
+    : userAccessState(user);
+  const primaryCourse = ["english", "chinese"].includes(req.body.primaryCourse)
+    ? req.body.primaryCourse
+    : user.primary_course;
+  if (primaryCourse !== user.primary_course) {
+    const friendshipCount = db.prepare(`
+      SELECT COUNT(*) AS count FROM friendships WHERE user_low_id = ? OR user_high_id = ?
+    `).get(id, id).count;
+    if (friendshipCount) return res.status(409).json({ error: "该用户已有好友关系，暂不能更换主课程" });
+  }
+  let accessTier = requestedState === "founder_trial" ? "founder_trial" : "free_trial";
+  let trialExpiresAt = null;
+  if (requestedState === "free_trial") {
+    const supplied = req.body.trialExpiresAt ? new Date(req.body.trialExpiresAt) : null;
+    trialExpiresAt = supplied && Number.isFinite(supplied.getTime())
+      ? supplied.toISOString()
+      : new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString();
+  } else if (requestedState === "expired") {
+    trialExpiresAt = now();
+  }
+  db.prepare(`
+    UPDATE users SET access_tier = ?, trial_expires_at = ?, primary_course = ? WHERE id = ?
+  `).run(accessTier, trialExpiresAt, primaryCourse, id);
+  auditAdmin(req, "user.access", "user", id, { accessState: requestedState, primaryCourse, trialExpiresAt });
+  return res.json({ ok: true, user: publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(id)) });
+});
+
+app.get("/api/admin/registration-applications", requireAdmin, (req, res) => {
+  const pageSize = Math.min(50, positiveInt(req.query.pageSize, 10));
+  const page = positiveInt(req.query.page, 1);
+  const status = ["pending", "approved", "rejected"].includes(req.query.status) ? req.query.status : "pending";
+  const total = db.prepare("SELECT COUNT(*) AS count FROM registration_applications WHERE status = ?").get(status).count;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const items = db.prepare(`
+    SELECT a.id, a.phone, a.social_name AS socialName, a.primary_course AS primaryCourse,
+           a.status, a.created_at AS createdAt, a.reviewed_at AS reviewedAt,
+           a.rejection_reason AS rejectionReason, u.social_name AS inviterSocialName
+    FROM registration_applications a
+    JOIN users u ON u.id = a.inviter_user_id
+    WHERE a.status = ?
+    ORDER BY a.created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(status, pageSize, (safePage - 1) * pageSize);
+  return res.json({ items, page: safePage, pageSize, total, totalPages, status });
+});
+
+app.post("/api/admin/registration-applications/:id/approve", requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const application = db.prepare("SELECT * FROM registration_applications WHERE id = ?").get(id);
+  if (!application || application.status !== "pending") return res.status(404).json({ error: "待审核申请不存在" });
+  try {
+    const userId = db.transaction(() => {
+      if (db.prepare("SELECT id FROM users WHERE phone = ?").get(application.phone)) throw new Error("该手机号已注册");
+      const link = db.prepare(`
+        SELECT * FROM referral_links
+        WHERE user_id = ? AND version = ? AND active = 1
+      `).get(application.inviter_user_id, application.referral_version);
+      if (!link || link.success_count >= link.max_uses) throw new Error("邀请链接已失效或达到使用上限");
+      const inviter = db.prepare("SELECT * FROM users WHERE id = ? AND status = 'active'").get(application.inviter_user_id);
+      if (!inviter || userAccessState(inviter) === "expired") throw new Error("邀请人账号当前不可用");
+      const nickname = application.phone.replace(/^(\d{3})\d{4}(\d{4})$/, "$1****$2");
+      const expiresAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString();
+      const inserted = db.prepare(`
+        INSERT INTO users (
+          username, password_hash, nickname, phone, role, status, password_reset_required,
+          access_tier, trial_expires_at, primary_course, social_name, created_at
+        ) VALUES (?, ?, ?, ?, 'user', 'active', 0, 'free_trial', ?, ?, ?, ?)
+      `).run(
+        application.phone,
+        application.password_hash,
+        nickname,
+        application.phone,
+        expiresAt,
+        application.primary_course,
+        application.social_name,
+        now()
+      );
+      const newUserId = Number(inserted.lastInsertRowid);
+      db.prepare(`
+        INSERT INTO referrals (inviter_user_id, invitee_user_id, referral_version, created_at)
+        VALUES (?, ?, ?, ?)
+      `).run(application.inviter_user_id, newUserId, application.referral_version, now());
+      createFriendship(application.inviter_user_id, newUserId, application.primary_course);
+      db.prepare("UPDATE referral_links SET success_count = success_count + 1, updated_at = ? WHERE user_id = ?")
+        .run(now(), application.inviter_user_id);
+      db.prepare(`
+        UPDATE registration_applications
+        SET status = 'approved', password_hash = '', reviewed_at = ?, reviewed_by = ? WHERE id = ?
+      `).run(now(), req.user.id, id);
+      return newUserId;
+    })();
+    auditAdmin(req, "registration.approve", "registration_application", id, { userId, primaryCourse: application.primary_course });
+    return res.json({ ok: true, userId });
+  } catch (error) {
+    return res.status(409).json({ error: error.message });
+  }
+});
+
+app.post("/api/admin/registration-applications/:id/reject", requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const reason = String(req.body.reason || "").trim().slice(0, 200);
+  const result = db.prepare(`
+    UPDATE registration_applications
+    SET status = 'rejected', password_hash = '', reviewed_at = ?, reviewed_by = ?, rejection_reason = ?
+    WHERE id = ? AND status = 'pending'
+  `).run(now(), req.user.id, reason, id);
+  if (!result.changes) return res.status(404).json({ error: "待审核申请不存在" });
+  auditAdmin(req, "registration.reject", "registration_application", id, { reason });
+  return res.json({ ok: true });
+});
+
+app.get("/api/admin/audit-logs", requireAdmin, (req, res) => {
+  const pageSize = Math.min(100, positiveInt(req.query.pageSize, 20));
+  const page = positiveInt(req.query.page, 1);
+  const action = String(req.query.action || "").trim();
+  const where = action ? "WHERE l.action = ?" : "";
+  const values = action ? [action] : [];
+  const total = db.prepare(`SELECT COUNT(*) AS count FROM admin_audit_logs l ${where}`).get(...values).count;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const rows = db.prepare(`
+    SELECT l.id, l.action, l.target_type AS targetType, l.target_id AS targetId,
+           l.details_json AS detailsJson, l.ip_hash AS ipHash, l.user_agent AS userAgent,
+           l.created_at AS createdAt, u.username AS adminUsername
+    FROM admin_audit_logs l
+    LEFT JOIN users u ON u.id = l.admin_user_id
+    ${where}
+    ORDER BY l.id DESC LIMIT ? OFFSET ?
+  `).all(...values, pageSize, (safePage - 1) * pageSize);
+  const items = rows.map(({ detailsJson, ...row }) => {
+    try {
+      return { ...row, details: JSON.parse(detailsJson) };
+    } catch {
+      return { ...row, details: {} };
+    }
+  });
+  return res.json({ items, page: safePage, pageSize, total, totalPages });
 });
 
 app.post("/api/admin/users/:id/reset-password", requireAdmin, (req, res) => {
@@ -1696,12 +2707,34 @@ app.post("/api/admin/users/:id/reset-password", requireAdmin, (req, res) => {
   if (user.role === "admin") return res.status(400).json({ error: "不能在这里重置管理员密码" });
   const password = randomPassword(10);
   db.prepare("UPDATE users SET password_hash = ?, password_reset_required = 1 WHERE id = ?").run(bcrypt.hashSync(password, 10), id);
+  auditAdmin(req, "user.password_reset", "user", id, { phoneLast4: String(user.phone || "").slice(-4) });
   return res.json({ ok: true, phone: user.phone, username: user.username, password, passwordResetRequired: true });
 });
 
-app.use("/", requirePasswordReadyPage, express.static(publicDir, { extensions: ["html"] }));
-app.get("*", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "index.html")));
+app.use("/", requirePasswordReadyPage, (req, res, next) => {
+  if (path.extname(req.path).toLowerCase() === ".html") return res.status(404).end();
+  return next();
+}, express.static(publicDir, { index: false, extensions: false }));
+app.get("*", requirePasswordReadyPage, (req, res) => res.redirect(req.user.primary_course === "chinese" ? "/chinese" : "/"));
 
-app.listen(port, () => {
-  console.log(`Minecraft English Reader listening on http://127.0.0.1:${port}`);
-});
+let server = null;
+if (require.main === module) {
+  server = app.listen(port, host, () => {
+    console.log(`Minecraft English Reader listening on http://${host}:${port}`);
+  });
+}
+
+module.exports = {
+  app,
+  db,
+  sessionStore,
+  helpers: {
+    allowedThemeIds,
+    friendStats,
+    parseReferralToken,
+    referralToken,
+    shanghaiDateKey,
+    userAccessState,
+    weekRange
+  }
+};

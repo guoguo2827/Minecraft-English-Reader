@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>好友与每周PK - Minecraft Reader</title>
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body>
+  <main class="shell friends-shell">
+    <section class="panel wide friends-panel">
+      <div class="top">
+        <div><p class="section-kicker">Friends</p><h1 id="friendsTitle">好友与每周PK</h1><p id="friendIdentity"></p></div>
+        <div class="actions"><a id="courseHome" href="/">返回学习</a><a id="courseProgress" href="/progress">我的进度</a></div>
+      </div>
+
+      <section class="admin-section invite-card">
+        <div class="section-heading"><div><h2 id="inviteTitle">我的邀请链接</h2><p id="inviteDescription">最多可批准20位好友，链接可以随时停用或换新。</p></div><span class="course-badge" id="inviteUsage">0 / 20</span></div>
+        <div class="invite-link-row"><input id="inviteLink" readonly placeholder="还没有生成邀请链接"><button id="copyInvite" type="button">复制</button></div>
+        <div class="actions invite-actions"><button id="createInvite" type="button">生成链接</button><button class="secondary" id="regenerateInvite" type="button">换新链接</button><button class="danger" id="toggleInvite" type="button">停用链接</button></div>
+        <p class="message" id="inviteMessage"></p>
+      </section>
+
+      <section class="admin-section">
+        <div class="section-heading"><div><p class="section-kicker" id="weekLabel"></p><h2 id="pkTitle">好友PK</h2></div><span class="shared-badge" id="pkBadge">主课程绿宝石 + 协作加分</span></div>
+        <div class="friend-self" id="myStats"></div>
+        <div class="friend-grid" id="friendList"><p>正在加载...</p></div>
+      </section>
+
+      <section class="admin-section shared-admin">
+        <div class="section-heading"><div><h2 id="challengeTitle">每周共同任务</h2><p id="challengeDescription">双方各学习3天并各完成30题，获得协作徽章和20点PK加分。</p></div></div>
+        <div class="challenge-list" id="challengeList"></div>
+      </section>
+    </section>
+  </main>
+  <script>
+    const inviteLink = document.querySelector("#inviteLink");
+    const inviteMessage = document.querySelector("#inviteMessage");
+    let inviteState = null;
+    let ui = {
+      home: "返回学习", progress: "我的进度", copy: "复制", create: "生成链接", regenerate: "换新链接",
+      stop: "停用链接", resume: "恢复链接", copied: "邀请链接已复制", self: "我的数据",
+      week: (key) => `本周开始于 ${key}`, score: "本周PK", days: "累计学习天数", mastered: "掌握词汇", answers: "完成题数",
+      tie: "平局", leading: "领先", behind: "落后", noFriends: "还没有好友。生成邀请链接并分享给认识的人吧。",
+      noChallenges: "建立好友关系后，每周共同任务会显示在这里。", completed: "已完成", active: "进行中",
+      myProgress: "我", friendProgress: "好友", daysUnit: "天", questionsUnit: "题", previous: "上周", noLink: "还没有生成邀请链接", confirmRegenerate: "换新后旧链接会立即失效，确定继续吗？"
+    };
+
+    function applyEnglishUi() {
+      document.documentElement.lang = "en";
+      ui = {
+        home: "Back to Study", progress: "My Progress", copy: "Copy", create: "Create Link", regenerate: "New Link",
+        stop: "Disable Link", resume: "Enable Link", copied: "Invitation link copied", self: "My Stats",
+        week: (key) => `Week starting ${key}`, score: "Weekly PK", days: "Study Days", mastered: "Mastered Words", answers: "Questions",
+        tie: "Tie", leading: "Ahead", behind: "Behind", noFriends: "No friends yet. Create a link and share it with someone you know.",
+        noChallenges: "Weekly teamwork tasks appear after a friendship is created.", completed: "Completed", active: "In Progress",
+        myProgress: "Me", friendProgress: "Friend", daysUnit: " days", questionsUnit: " questions", previous: "Last week", noLink: "No invitation link yet", confirmRegenerate: "The old link will stop working immediately. Create a new one?"
+      };
+      document.querySelector("#friendsTitle").textContent = "Friends & Weekly PK";
+      document.querySelector("#inviteTitle").textContent = "My Invitation Link";
+      document.querySelector("#inviteDescription").textContent = "Up to 20 approved friends. You can disable or replace this link at any time.";
+      document.querySelector("#pkTitle").textContent = "Friend PK";
+      document.querySelector("#pkBadge").textContent = "Primary-course Emeralds + teamwork bonus";
+      document.querySelector("#challengeTitle").textContent = "Weekly Teamwork";
+      document.querySelector("#challengeDescription").textContent = "Both friends study on 3 days and answer 30 questions to earn a badge and 20 PK points.";
+    }
+
+    async function api(url, options = {}) {
+      const response = await fetch(url, { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } });
+      if (response.status === 401) { location.href = "/login?next=%2Ffriends"; throw new Error("请重新登录"); }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "操作失败");
+      return data;
+    }
+    function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]); }
+    function statMarkup(stats) {
+      return `<div class="mini-stat"><strong>${stats.pkScore}</strong><span>${ui.score}</span></div><div class="mini-stat"><strong>${stats.studyDays}</strong><span>${ui.days}</span></div><div class="mini-stat"><strong>${stats.masteredWords}</strong><span>${ui.mastered}</span></div><div class="mini-stat"><strong>${stats.completedQuestions}</strong><span>${ui.answers}</span></div>`;
+    }
+    async function copyText(text) {
+      if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+      inviteLink.select(); document.execCommand("copy");
+    }
+    function renderInvite(data) {
+      inviteState = data; inviteLink.value = data.link || "";
+      inviteLink.placeholder = ui.noLink;
+      document.querySelector("#inviteUsage").textContent = `${data.successCount || 0} / ${data.maxUses || 20}`;
+      document.querySelector("#createInvite").hidden = Boolean(data.link);
+      document.querySelector("#createInvite").textContent = ui.create;
+      document.querySelector("#copyInvite").textContent = ui.copy;
+      document.querySelector("#regenerateInvite").textContent = ui.regenerate;
+      document.querySelector("#regenerateInvite").hidden = !data.link;
+      document.querySelector("#toggleInvite").hidden = !data.link;
+      document.querySelector("#toggleInvite").textContent = data.active ? ui.stop : ui.resume;
+      document.querySelector("#toggleInvite").className = data.active ? "danger" : "secondary";
+    }
+    async function loadPage() {
+      const [{ user }, link, summary, challenges] = await Promise.all([
+        api("/api/me"), api("/api/referrals/link"), api("/api/friends/summary"), api("/api/friends/challenge")
+      ]);
+      if (user.primaryCourse === "chinese") applyEnglishUi();
+      document.querySelector("#friendIdentity").textContent = `${user.socialName} · ${user.primaryCourse === "chinese" ? "Chinese Reader" : "英语课程"}`;
+      document.querySelector("#courseHome").href = user.primaryCourse === "chinese" ? "/chinese" : "/";
+      document.querySelector("#courseProgress").href = user.primaryCourse === "chinese" ? "/chinese/progress" : "/progress";
+      renderInvite(link);
+      document.querySelector("#courseHome").textContent = ui.home;
+      document.querySelector("#courseProgress").textContent = ui.progress;
+      document.querySelector("#weekLabel").textContent = ui.week(summary.weekKey);
+      document.querySelector("#myStats").innerHTML = `<strong>${ui.self}</strong><div class="friend-stats">${statMarkup(summary.me)}</div>`;
+      const [weekYear, weekMonth, weekDay] = summary.weekKey.split("-").map(Number);
+      const previousKey = new Date(Date.UTC(weekYear, weekMonth - 1, weekDay - 7)).toISOString().slice(0, 10);
+      const previousSummary = await api(`/api/friends/summary?week=${previousKey}`);
+      const previousByUser = new Map(previousSummary.friends.map((friend) => [friend.userId, friend]));
+      document.querySelector("#friendList").innerHTML = summary.friends.map((friend) => {
+        const previous = previousByUser.get(friend.userId);
+        const previousResult = previous ? (previous.pk.result === "tie" ? ui.tie : previous.pk.result === "leading" ? `${ui.leading} ${previous.pk.difference}` : `${ui.behind} ${previous.pk.difference}`) : ui.tie;
+        return `<article class="friend-card"><div class="friend-card-head"><h3>${escapeHtml(friend.socialName)}</h3><span class="status-chip active">${friend.pk.result === "tie" ? ui.tie : friend.pk.result === "leading" ? `${ui.leading} ${friend.pk.difference}` : `${ui.behind} ${friend.pk.difference}`}</span></div><div class="friend-stats">${statMarkup(friend.stats)}</div><p class="muted">${ui.previous}: ${previousResult}</p></article>`;
+      }).join("") || `<p>${ui.noFriends}</p>`;
+      document.querySelector("#challengeList").innerHTML = challenges.challenges.map((item) => `<article class="challenge-card"><div><strong>${escapeHtml(item.friendSocialName)}</strong><span>${item.status === "completed" ? ui.completed : ui.active}</span></div><div class="challenge-progress"><span>${ui.myProgress}: ${item.me.weeklyStudyDays}/3${ui.daysUnit} · ${item.me.weeklyAnswers}/30${ui.questionsUnit}</span><span>${ui.friendProgress}: ${item.friend.weeklyStudyDays}/3${ui.daysUnit} · ${item.friend.weeklyAnswers}/30${ui.questionsUnit}</span></div></article>`).join("") || `<p>${ui.noChallenges}</p>`;
+    }
+    document.querySelector("#createInvite").addEventListener("click", async () => { try { renderInvite(await api("/api/referrals/link", { method: "POST", body: "{}" })); } catch (error) { inviteMessage.textContent = error.message; } });
+    document.querySelector("#regenerateInvite").addEventListener("click", async () => { if (!confirm(ui.confirmRegenerate)) return; try { renderInvite(await api("/api/referrals/link/regenerate", { method: "POST", body: "{}" })); } catch (error) { inviteMessage.textContent = error.message; } });
+    document.querySelector("#toggleInvite").addEventListener("click", async () => { try { const data = await api("/api/referrals/link", { method: "PATCH", body: JSON.stringify({ active: !inviteState.active }) }); renderInvite({ ...inviteState, active: data.active }); } catch (error) { inviteMessage.textContent = error.message; } });
+    document.querySelector("#copyInvite").addEventListener("click", async () => { if (!inviteLink.value) return; await copyText(inviteLink.value); inviteMessage.textContent = ui.copied; });
+    loadPage().catch((error) => { inviteMessage.textContent = error.message; });
+  </script>
+</body>
+</html>

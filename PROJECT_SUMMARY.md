@@ -1,0 +1,41 @@
+# Minecraft English Learning - Project Summary
+
+## Product
+
+The service contains two Minecraft-style language courses sharing one phone account:
+
+- English Reader: 17 themes for Chinese-speaking learners.
+- Chinese Reader: 10 themes and 210 words for English-speaking learners.
+
+Course progress, review queues and emerald rewards remain isolated. Existing users are preserved as founder-trial users during the public-beta migration.
+
+## Architecture
+
+- Runtime: Node.js 22+, Express 4, native HTML/CSS/JavaScript.
+- Business database: SQLite at `data/app.db`, using WAL and `better-sqlite3`.
+- Sessions: separate SQLite database at `data/sessions.db`.
+- Reverse proxy: Nginx terminates HTTPS and proxies only to `127.0.0.1:3000`.
+- Process manager: PM2 with `ecosystem.config.cjs`.
+- TTS: authenticated Tencent Cloud TTS with canonical vocabulary validation, private file caching and rate limits.
+
+## Public Beta Access
+
+`users.status` still means `active/disabled`. Experience access uses separate fields:
+
+- `founder_trial`: full primary-course access, no expiry.
+- `free_trial`: 14-day access to selected themes.
+- `expired`: progress and friends remain visible; study, quiz and TTS are blocked.
+
+`ACCESS_CONTROL_ENFORCED=false` is the safe deployment default. It runs migrations and exposes inferred account data without locking courses. Enable it only after administrators verify existing users' primary courses.
+
+## Social Features
+
+Users can create a revocable referral link with a lifetime maximum of 20 approved friends. Referral registration creates a pending application. Approval creates the user, starts the 14-day trial and creates the friendship in one transaction.
+
+Weekly PK uses primary-course emerald events from Monday 00:00 Asia/Shanghai. The joint challenge requires both friends to study three days and answer 30 questions; its 20-point bonus is stored separately and never changes either course's emerald balance.
+
+## Data Safety
+
+Migration `2026-08-09-public-beta-v1` only adds columns and tables. Existing progress, review, reward, whitelist and account rows are not moved or recalculated. All administrator account, whitelist, access, review and password-reset actions are logged with redacted details and hashed IP addresses for 90 days.
+
+Before every production update, stop the English PM2 process, run `deploy/backup-sqlite.sh`, verify the backup, pull code, install locked dependencies, run `npm run migrate`, then restart and smoke-test.

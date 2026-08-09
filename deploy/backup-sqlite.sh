@@ -15,6 +15,11 @@ fi
 
 stamp="$(date +%Y%m%d-%H%M%S)"
 sqlite3 "$DB_PATH" ".backup '$BACKUP_DIR/app-$stamp.db'"
+integrity="$(sqlite3 "$BACKUP_DIR/app-$stamp.db" 'PRAGMA integrity_check;')"
+if [ "$integrity" != "ok" ]; then
+  echo "Backup integrity check failed: $integrity" >&2
+  exit 1
+fi
 find "$BACKUP_DIR" -type f -name 'app-*.db' -mtime +"$KEEP_DAYS" -delete
 
 echo "Backup created: $BACKUP_DIR/app-$stamp.db"

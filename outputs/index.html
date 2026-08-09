@@ -642,6 +642,15 @@
       }
     }
 
+    .trial-pill { color: #fff4b7; font-weight: 800; white-space: nowrap; }
+    .theme-tab.locked { opacity: .66; cursor: not-allowed; filter: grayscale(.45); }
+    .theme-tab.locked .tab-title::after { content: "  锁定"; color: #8b381d; font-size: 12px; }
+    .mode-label-compact { display: none; }
+    @media (max-width: 1280px) and (orientation: landscape) {
+      .mode-label-wide { display: none; }
+      .mode-label-compact { display: inline; }
+    }
+
     .now-word {
       display: grid;
       place-items: center;
@@ -1271,6 +1280,8 @@
         <p>我的世界英语点读学习 · 方块切片修复 v7</p>
       </div>
       <div class="top-actions">
+        <span class="trial-pill" id="trialStatus"></span>
+        <a class="top-link" href="/friends">好友</a>
         <a class="top-link" href="/progress">我的进度</a>
         <button class="top-link button" id="logoutBtn" type="button">退出</button>
         <button class="status-pill" id="voiceStatus" type="button">开启语音</button>
@@ -1289,8 +1300,8 @@
             </div>
             <div class="study-controls">
               <div class="mode-switch" aria-label="学习模式切换">
-                <button type="button" data-mode-button="learn">学习模式</button>
-                <button type="button" data-mode-button="quiz">答题模式</button>
+                <button type="button" data-mode-button="learn"><span class="mode-label-wide">学习模式</span><span class="mode-label-compact">学习</span></button>
+                <button type="button" data-mode-button="quiz"><span class="mode-label-wide">答题模式</span><span class="mode-label-compact">答题</span></button>
               </div>
               <button class="cn-toggle" id="cnToggleBtn" type="button" aria-pressed="false">隐藏中文</button>
             </div>
@@ -1955,6 +1966,7 @@
     let ttsAudio = null;
     let studyMode = "learn";
     let rewardState = null;
+    let currentUserAccess = null;
     const showCnStorageKey = "minecraft-reader-show-cn";
     let showCardChinese = localStorage.getItem(showCnStorageKey) !== "false";
     const TTS_VERSION = "20260710-501008";
@@ -1999,6 +2011,7 @@
       feedback: document.querySelector("#feedback"),
       voiceStatus: document.querySelector("#voiceStatus"),
       cnToggleBtn: document.querySelector("#cnToggleBtn"),
+      trialStatus: document.querySelector("#trialStatus"),
       modeButtons: document.querySelectorAll("[data-mode-button]")
     };
 
@@ -2021,8 +2034,23 @@
     async function initUser() {
       try {
         const data = await api("/api/me");
-        document.body.dataset.role = data?.user?.role || "user";
+        currentUserAccess = data?.user || null;
+        document.body.dataset.role = currentUserAccess?.role || "user";
+        if (currentUserAccess?.accessState === "free_trial" && currentUserAccess.trialExpiresAt) {
+          const days = Math.max(0, Math.ceil((new Date(currentUserAccess.trialExpiresAt) - Date.now()) / 86400000));
+          els.trialStatus.textContent = `体验剩余 ${days} 天`;
+        } else if (currentUserAccess?.accessState === "founder_trial") {
+          els.trialStatus.textContent = "创始体验";
+        }
+        return currentUserAccess;
       } catch {}
+      return null;
+    }
+
+    function themeIsLocked(theme) {
+      return currentUserAccess?.accessControlEnforced !== false
+        && currentUserAccess?.role !== "admin"
+        && !currentUserAccess?.allowedThemeIds?.english?.includes(theme.id);
     }
 
     function setStudyMode(mode) {
@@ -2317,7 +2345,7 @@
 
     function renderTabs() {
       els.themeTabs.innerHTML = themes.map((theme, index) => `
-        <button class="theme-tab ${index === currentThemeIndex ? "active" : ""}" type="button" data-theme="${index}">
+        <button class="theme-tab ${index === currentThemeIndex ? "active" : ""} ${themeIsLocked(theme) ? "locked" : ""}" type="button" data-theme="${index}" aria-disabled="${themeIsLocked(theme)}">
           <span class="tab-num">${String(index + 1).padStart(2, "0")}</span>
           <span class="tab-title">${theme.title}<small>${theme.subtitle}</small></span>
         </button>
@@ -2472,6 +2500,11 @@
     function setTheme(index) {
       currentThemeIndex = index;
       const theme = themes[index];
+      if (themeIsLocked(theme)) {
+        renderTabs();
+        els.feedback.textContent = "该主题不在当前体验范围内";
+        return;
+      }
       currentItem = theme.items[0];
       if (els.poster) {
         els.poster.src = theme.image;
@@ -2514,12 +2547,16 @@
     window.speechSynthesis?.addEventListener?.("voiceschanged", pickVoice);
     window.addEventListener("resize", () => renderCards());
 
-    initUser();
-    initRewards();
-    setCardChineseVisible(showCardChinese);
-    setStudyMode("learn");
-    pickVoice();
-    setTheme(0);
+    async function boot() {
+      await initUser();
+      initRewards();
+      setCardChineseVisible(showCardChinese);
+      setStudyMode("learn");
+      pickVoice();
+      const firstAllowed = themes.findIndex((theme) => !themeIsLocked(theme));
+      setTheme(firstAllowed >= 0 ? firstAllowed : 0);
+    }
+    boot();
   </script>
 </body>
 </html>

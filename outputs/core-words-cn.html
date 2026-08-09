@@ -666,6 +666,9 @@
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; }
       .reward-particle { display: none; }
     }
+    .trial-pill { color: #fff3ae; font-weight: 800; white-space: nowrap; }
+    .theme-tab.locked { opacity: .62; cursor: not-allowed; filter: grayscale(.5); }
+    .theme-tab.locked .tab-title::after { content: "  Locked"; color: #8b381d; font-size: 11px; }
   </style>
 </head>
 <body data-show-en="true" data-study-mode="learn">
@@ -675,6 +678,8 @@
       <p class="subtitle">Tap a card to hear clear Mandarin pronunciation</p>
     </div>
     <div class="top-actions">
+      <span class="trial-pill" id="trialStatus"></span>
+      <a class="pill" href="/friends" style="text-decoration:none">Friends</a>
       <button class="pill" id="enToggle" type="button">Hide English</button>
       <button class="pill" id="voiceBtn" type="button">Chinese Voice</button>
       <a class="pill" href="/chinese/progress" style="text-decoration:none">My Progress</a>
@@ -788,6 +793,7 @@
     let audio = null;
     let preloadObserver = null;
     let rewardState = null;
+    let currentUserAccess = null;
 
     const els = {
       themeTabs: document.querySelector("#themeTabs"),
@@ -816,6 +822,7 @@
       rewardFixed: document.querySelector("#rewardFixed"),
       rewardRulesBtn: document.querySelector("#rewardRulesBtn"),
       rewardRulesModal: document.querySelector("#rewardRulesModal"),
+      trialStatus: document.querySelector("#trialStatus"),
       modeButtons: document.querySelectorAll("[data-mode-button]")
     };
 
@@ -936,7 +943,7 @@
 
     function renderTabs() {
       els.themeTabs.innerHTML = themes.map((theme, index) => `
-        <button class="theme-tab ${index === currentThemeIndex ? "active" : ""}" type="button" data-theme="${index}">
+        <button class="theme-tab ${index === currentThemeIndex ? "active" : ""} ${theme.locked ? "locked" : ""}" type="button" data-theme="${index}" aria-disabled="${Boolean(theme.locked)}">
           <span class="tab-num">${String(index + 1).padStart(2, "0")}</span>
           <span class="tab-title">${escapeHtml(theme.title)}<small>${theme.items.length} words</small></span>
         </button>
@@ -1042,6 +1049,11 @@
     async function setTheme(index) {
       currentThemeIndex = index;
       const theme = themes[index];
+      if (theme.locked) {
+        renderTabs();
+        els.themeSubtitle.textContent = "This theme is locked during the free trial";
+        return;
+      }
       currentItem = theme.items[0] || null;
       els.themeTitle.textContent = theme.title;
       els.themeSubtitle.textContent = `${theme.items.length} Chinese words`;
@@ -1054,14 +1066,23 @@
       setEnglishVisible(localStorage.getItem(englishPreferenceKey) !== "false");
       setStudyMode("learn", false);
       try {
-        const [themeData, rewardData] = await Promise.all([
+        const [themeData, rewardData, meData] = await Promise.all([
           api("/api/chinese/themes"),
-          api("/api/chinese/rewards")
+          api("/api/chinese/rewards"),
+          api("/api/me")
         ]);
+        currentUserAccess = meData.user;
+        if (currentUserAccess.accessState === "free_trial" && currentUserAccess.trialExpiresAt) {
+          const days = Math.max(0, Math.ceil((new Date(currentUserAccess.trialExpiresAt) - Date.now()) / 86400000));
+          els.trialStatus.textContent = `${days} trial days left`;
+        } else if (currentUserAccess.accessState === "founder_trial") {
+          els.trialStatus.textContent = "Founder Trial";
+        }
         themes = themeData.themes || [];
         if (!themes.length) throw new Error("No Chinese vocabulary was found");
         renderReward(rewardData.rewardState);
-        await setTheme(0);
+        const firstAllowed = themes.findIndex((theme) => !theme.locked);
+        await setTheme(firstAllowed >= 0 ? firstAllowed : 0);
       } catch (error) {
         els.themeTitle.textContent = "Unable to load";
         els.themeSubtitle.textContent = error.message;

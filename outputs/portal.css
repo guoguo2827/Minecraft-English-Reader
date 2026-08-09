@@ -56,7 +56,8 @@ label {
   font-weight: 900;
 }
 
-input {
+input,
+select {
   min-height: 46px;
   border: 3px solid #b79556;
   border-radius: 8px;
@@ -114,6 +115,31 @@ button.danger {
   font-weight: 800;
 }
 
+.wide-copy { width: min(760px, 100%); }
+.portal-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+.button-link { display: inline-flex; align-items: center; min-height: 46px; padding: 8px 14px; border: 3px solid #1d4d23; border-radius: 8px; background: var(--leaf); color: #fff; text-decoration: none; }
+.button-link.secondary { border-color: #765126; background: var(--wood); }
+.invite-preview { display: grid; gap: 4px; margin: 12px 0; padding: 12px; border: 3px solid #79a96d; border-radius: 8px; background: #edf9e6; }
+.invite-preview span { color: #52634d; font-weight: 800; }
+.friends-shell { width: min(1280px, 100%); }
+.friends-panel { width: 100%; }
+.invite-link-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.invite-actions { margin-top: 10px; }
+.friend-self { margin-bottom: 12px; padding: 12px; border: 3px solid #2f7d32; border-radius: 8px; background: #edf9e6; }
+.friend-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.friend-card, .challenge-card { padding: 14px; border: 3px solid #d0b072; border-radius: 8px; background: #fffdf3; }
+.friend-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.friend-card h3 { margin: 0; }
+.friend-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.mini-stat { min-width: 0; padding: 8px; border: 2px solid #b8cda7; border-radius: 6px; background: #f8fff3; text-align: center; }
+.mini-stat strong, .mini-stat span { display: block; }
+.mini-stat strong { color: var(--leaf); font-size: 22px; }
+.mini-stat span { color: #565; font-size: 11px; font-weight: 800; }
+.challenge-list { display: grid; gap: 10px; }
+.challenge-card { display: grid; grid-template-columns: minmax(180px, .6fr) 1fr; gap: 12px; }
+.challenge-card span { display: block; margin-top: 4px; color: #565; font-weight: 800; }
+.challenge-progress { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
 .shell {
   display: grid;
   gap: 16px;
@@ -156,7 +182,7 @@ button.danger {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 360px) auto;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
   align-items: end;
   margin-bottom: 12px;
@@ -364,7 +390,7 @@ button.danger {
 }
 
 .whitelist-form {
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr minmax(150px, 180px) auto;
   align-items: end;
 }
 
@@ -490,4 +516,6 @@ button.danger {
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .friend-grid, .friend-stats, .challenge-card, .challenge-progress, .invite-link-row { grid-template-columns: 1fr; }
 }

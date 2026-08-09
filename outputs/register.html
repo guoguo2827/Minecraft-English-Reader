@@ -3,39 +3,107 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>注册 - Minecraft English Reader</title>
+  <title>注册 - Minecraft Reader</title>
   <link rel="stylesheet" href="/portal.css">
 </head>
 <body>
   <main class="portal">
     <section class="portal-card">
-      <h1>邀请码注册</h1>
-      <p>请使用管理员提供的手机号和 6 位邀请码，设置自己的登录密码</p>
+      <p class="section-kicker" id="registerKicker">管理员邀请</p>
+      <h1 id="registerTitle">邀请码注册</h1>
+      <p id="registerIntro">使用管理员提供的手机号和邀请码，设置登录密码。</p>
+      <div class="invite-preview" id="invitePreview" hidden></div>
       <form id="registerForm">
-        <label>手机号<input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="1[3-9][0-9]{9}" required></label>
-        <label>邀请码<input name="inviteCode" maxlength="6" autocomplete="one-time-code" required></label>
-        <label>密码<input name="password" type="password" autocomplete="new-password" minlength="6" required></label>
-        <label>确认密码<input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required></label>
-        <button type="submit">注册并登录</button>
+        <label><span id="phoneLabel">手机号</span><input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="1[3-9][0-9]{9}" required></label>
+        <label id="inviteCodeField"><span id="inviteCodeLabel">邀请码</span><input name="inviteCode" maxlength="6" autocomplete="one-time-code"></label>
+        <label><span id="passwordLabel">密码</span><input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label><span id="confirmPasswordLabel">确认密码</span><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label class="check-line" id="guardianField" hidden>
+          <input name="guardianConfirmed" type="checkbox">
+          <span id="guardianCopy">监护人已知情，并同意<a id="privacyLink" href="/privacy" target="_blank" rel="noopener">隐私与体验说明</a></span>
+        </label>
+        <button type="submit" id="submitBtn">注册并登录</button>
       </form>
-      <p class="portal-link">已有账号？<a id="loginLink" href="/login">去登录</a></p>
-      <p class="message" id="message"></p>
-      <p class="notice">邀请码注册成功后会立即失效，不能重复使用。</p>
+      <p class="portal-link" id="loginCopy">已有账号？<a id="loginLink" href="/login">去登录</a></p>
+      <p class="message" id="message" aria-live="polite"></p>
+      <p class="notice" id="registerNotice">邀请码注册成功后会立即失效，不能重复使用。</p>
     </section>
   </main>
   <script>
     const form = document.querySelector("#registerForm");
     const message = document.querySelector("#message");
-    const requestedNext = new URLSearchParams(location.search).get("next") || "";
+    const params = new URLSearchParams(location.search);
+    const referralToken = params.get("ref") || "";
+    const requestedNext = params.get("next") || "";
     const nextPath = /^\/chinese(?:\/|$)/.test(requestedNext) ? requestedNext : "/";
+    const referralMode = Boolean(referralToken);
+    let englishUi = false;
+
+    function applyEnglishUi() {
+      englishUi = true;
+      document.documentElement.lang = "en";
+      document.title = "Register - Minecraft Reader";
+      document.querySelector("#registerKicker").textContent = referralMode ? "Friend Invitation" : "Administrator Invitation";
+      document.querySelector("#registerTitle").textContent = referralMode ? "Apply for a Free Trial" : "Invitation Registration";
+      document.querySelector("#registerIntro").textContent = referralMode ? "An administrator will review the application. The 14-day trial starts only after approval." : "Use the phone number and invitation code provided by the administrator, then create a password.";
+      document.querySelector("#phoneLabel").textContent = "Phone Number";
+      document.querySelector("#inviteCodeLabel").textContent = "Invitation Code";
+      document.querySelector("#passwordLabel").textContent = "Password";
+      document.querySelector("#confirmPasswordLabel").textContent = "Confirm Password";
+      document.querySelector("#guardianCopy").firstChild.textContent = "A parent or guardian is informed and agrees to the ";
+      document.querySelector("#privacyLink").textContent = "Privacy & Trial Notice";
+      document.querySelector("#privacyLink").href = "/privacy?lang=en";
+      document.querySelector("#submitBtn").textContent = referralMode ? "Submit for Review" : "Register and Sign In";
+      document.querySelector("#registerNotice").textContent = referralMode ? "The trial period does not start while your application is being reviewed." : "The invitation code expires immediately after successful registration.";
+      document.querySelector("#loginCopy").firstChild.textContent = "Already registered? ";
+      document.querySelector("#loginLink").textContent = "Sign In";
+      document.querySelector("#loginLink").href = "/login?next=%2Fchinese";
+    }
+
+    if (nextPath === "/chinese" || nextPath === "/chinese/progress") applyEnglishUi();
+
     if (nextPath !== "/") document.querySelector("#loginLink").href = `/login?next=${encodeURIComponent(nextPath)}`;
+
+    async function loadReferral() {
+      if (!referralMode) {
+        form.elements.inviteCode.required = true;
+        return;
+      }
+      document.querySelector("#registerKicker").textContent = "好友邀请";
+      document.querySelector("#registerTitle").textContent = "申请免费体验";
+      document.querySelector("#registerIntro").textContent = "提交后由管理员审核，批准时开始14天体验。";
+      document.querySelector("#inviteCodeField").hidden = true;
+      document.querySelector("#guardianField").hidden = false;
+      document.querySelector("#registerNotice").textContent = "审核期间不会消耗体验天数。管理员批准后即可使用手机号和密码登录。";
+      document.querySelector("#submitBtn").textContent = "提交审核申请";
+      const response = await fetch(`/api/referrals/preview?token=${encodeURIComponent(referralToken)}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        form.querySelectorAll("input, button").forEach((element) => { element.disabled = true; });
+        message.textContent = data.error || "邀请链接无效";
+        return;
+      }
+      if (data.primaryCourse === "chinese") applyEnglishUi();
+      const preview = document.querySelector("#invitePreview");
+      preview.hidden = false;
+      preview.innerHTML = `<strong>${escapeHtml(data.socialName)}</strong><span>${englishUi ? `Chinese Reader · ${data.remainingUses} invitations left` : `${data.primaryCourse === "chinese" ? "中文学习" : "英语学习"} · 剩余 ${data.remainingUses} 个邀请名额`}</span>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>'"]/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+      })[char]);
+    }
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      message.textContent = "正在注册...";
+      message.textContent = englishUi ? "Submitting for review..." : (referralMode ? "正在提交审核申请..." : "正在注册...");
       const body = Object.fromEntries(new FormData(form).entries());
       body.phone = String(body.phone || "").replace(/\D/g, "").slice(0, 11);
+      body.guardianConfirmed = form.elements.guardianConfirmed.checked;
+      if (referralMode) body.referralToken = referralToken;
       if (body.password !== body.confirmPassword) {
-        message.textContent = "两次输入的密码不一致";
+        message.textContent = englishUi ? "The two passwords do not match" : "两次输入的密码不一致";
         return;
       }
       const response = await fetch("/api/auth/register", {
@@ -45,7 +113,14 @@
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        message.textContent = data.error || "注册失败";
+        message.textContent = data.error || (englishUi ? "Registration failed" : "注册失败");
+        return;
+      }
+      if (data.pendingReview) {
+        form.hidden = true;
+        document.querySelector("#registerTitle").textContent = englishUi ? "Application Submitted" : "申请已提交";
+        document.querySelector("#registerIntro").textContent = englishUi ? `Your friend name is ${data.socialName}. After approval, sign in with this phone number and password.` : `你的好友名称是 ${data.socialName}。管理员批准后，使用刚才的手机号和密码登录。`;
+        message.textContent = englishUi ? "Waiting for administrator approval. Your 14-day trial has not started." : "正在等待管理员审核，14天体验尚未开始。";
         return;
       }
       location.href = nextPath;
@@ -54,6 +129,8 @@
     form.elements.phone.addEventListener("input", () => {
       form.elements.phone.value = form.elements.phone.value.replace(/\D/g, "").slice(0, 11);
     });
+
+    loadReferral();
   </script>
 </body>
 </html>

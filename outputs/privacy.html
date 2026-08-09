@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>隐私与体验说明 - Minecraft Reader</title>
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body>
+  <main class="portal">
+    <section class="portal-card wide-copy">
+      <h1 id="privacyTitle">隐私与体验说明</h1>
+      <div id="privacyCopy">
+        <p>本产品仅收集登录手机号、系统生成的好友名称和学习进度，用于账号登录、课程学习、好友统计和管理员审核。</p>
+        <p>请勿填写儿童真实姓名、年龄、学校或其他身份信息。好友页面不会展示手机号。</p>
+        <p>好友邀请首版采用管理员人工审核，不等同于短信实名验证。请仅向认识并信任的人分享邀请链接。</p>
+        <p>本项目为非官方学习工具，与 Mojang、Microsoft 或 Minecraft 官方无关联。</p>
+      </div>
+      <p><a id="closeLink" href="javascript:window.close()">关闭页面</a></p>
+    </section>
+  </main>
+  <script>
+    if (new URLSearchParams(location.search).get("lang") === "en") {
+      document.documentElement.lang = "en";
+      document.title = "Privacy & Trial Notice - Minecraft Reader";
+      document.querySelector("#privacyTitle").textContent = "Privacy & Trial Notice";
+      document.querySelector("#privacyCopy").innerHTML = "<p>We collect only a login phone number, a system-generated friend name and learning progress for sign-in, lessons, friend statistics and administrator review.</p><p>Do not enter a child's real name, age, school or other identifying information. Phone numbers are never shown on the Friends page.</p><p>Friend registrations are reviewed manually and are not SMS identity verification. Share invitation links only with people you know and trust.</p><p>This is an unofficial learning tool and is not affiliated with Mojang, Microsoft or the official Minecraft brand.</p>";
+      document.querySelector("#closeLink").textContent = "Close";
+    }
+  </script>
+</body>
+</html>

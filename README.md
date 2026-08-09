@@ -13,6 +13,8 @@
 - 学习进度记录
 - 错题第 6-10 题复现，连续答对 2 次后退出错题队列
 - 简单管理后台
+- SQLite 持久会话、体验权益和管理员操作日志
+- 好友邀请审核、每周绿宝石 PK 与共同任务
 
 ## 本地运行
 
@@ -29,6 +31,7 @@ npm start
 - 中文课程进度：http://127.0.0.1:3000/chinese/progress
 - 登录页：http://127.0.0.1:3000/login
 - 管理后台：http://127.0.0.1:3000/admin
+- 好友页：http://127.0.0.1:3000/friends
 
 首次启动会自动创建管理员账号。默认值来自 `.env.example`，上线前必须修改 `ADMIN_PASSWORD` 和 `SESSION_SECRET`。
 
@@ -46,7 +49,7 @@ pm2 start ecosystem.config.cjs
 pm2 save
 ```
 
-如使用 Nginx，可参考 `deploy/nginx.conf.example`。
+生产部署、HTTPS、无损迁移和回滚步骤见 `deploy/PUBLIC_BETA_DEPLOYMENT.md`，Nginx 模板见 `deploy/nginx.conf.example`。
 
 ## 数据备份
 

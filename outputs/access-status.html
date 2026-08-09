@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>课程访问状态 - Minecraft Reader</title>
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body>
+  <main class="portal">
+    <section class="portal-card" id="statusCard">
+      <p class="section-kicker">课程状态</p>
+      <h1 id="statusTitle">正在检查...</h1>
+      <p id="statusText"></p>
+      <div class="portal-actions" id="statusActions"></div>
+    </section>
+  </main>
+  <script>
+    fetch("/api/me").then((response) => response.json()).then(({ user }) => {
+      const expired = user.accessState === "expired";
+      const englishUi = user.primaryCourse === "chinese";
+      const courseName = user.primaryCourse === "chinese" ? "中文点读课程" : "英语点读课程";
+      document.documentElement.lang = englishUi ? "en" : "zh-CN";
+      document.querySelector("#statusTitle").textContent = englishUi
+        ? (expired ? "Your free trial has ended" : "This is a different course")
+        : (expired ? "免费体验已到期" : "这是另一门学习课程");
+      document.querySelector("#statusText").textContent = englishUi
+        ? (expired ? "Study, quiz and voice features are paused. Your progress and friend rankings are still available." : "Your primary course is Chinese Reader. Contact the administrator to change it.")
+        : (expired ? "学习、测验和语音功能已暂停，你仍可以查看已有进度和好友排行。" : `你的主课程是${courseName}。如需调整，请联系管理员。`);
+      const home = user.primaryCourse === "chinese" ? "/chinese" : "/";
+      const progress = user.primaryCourse === "chinese" ? "/chinese/progress" : "/progress";
+      const labels = englishUi ? { home: "Primary Course", progress: "View Progress", friends: "Friends" } : { home: "返回主课程", progress: "查看进度", friends: "好友排行" };
+      document.querySelector("#statusActions").innerHTML = `${expired ? "" : `<a class="button-link" href="${home}">${labels.home}</a>`}<a class="button-link secondary" href="${progress}">${labels.progress}</a><a class="button-link secondary" href="/friends">${labels.friends}</a>`;
+    }).catch(() => { location.href = "/login"; });
+  </script>
+</body>
+</html>

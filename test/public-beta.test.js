@@ -1,0 +1,190 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+const Database = require("better-sqlite3");
+const bcrypt = require("bcryptjs");
+
+const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mer-beta-"));
+const databasePath = path.join(directory, "app.db");
+const sessionPath = path.join(directory, "sessions.db");
+const seed = new Database(databasePath);
+seed.exec(`
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    nickname TEXT NOT NULL,
+    phone TEXT UNIQUE,
+    role TEXT NOT NULL DEFAULT 'user',
+    status TEXT NOT NULL DEFAULT 'active',
+    password_reset_required INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    last_login_at TEXT
+  );
+`);
+seed.prepare(`INSERT INTO users (username, password_hash, nickname, phone, role, status, created_at) VALUES (?, ?, ?, ?, 'user', 'active', ?)`)
+  .run("legacy", bcrypt.hashSync("LegacyPass123", 4), "Legacy", "13900000001", new Date().toISOString());
+seed.close();
+
+process.env.DATABASE_PATH = databasePath;
+process.env.SESSION_DATABASE_PATH = sessionPath;
+process.env.NODE_ENV = "test";
+process.env.COOKIE_SECURE = "false";
+process.env.ACCESS_CONTROL_ENFORCED = "true";
+process.env.SESSION_SECRET = "test-session-secret-with-enough-length";
+process.env.ADMIN_USERNAME = "admin";
+process.env.ADMIN_PASSWORD = "AdminPass123";
+process.env.ADMIN_PHONE = "13800000000";
+
+const { app, db, sessionStore } = require("../server");
+let server;
+let baseUrl;
+let adminCookie;
+let invitedCookie;
+
+async function login(phone, password) {
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone, password })
+  });
+  const cookieHeader = response.headers.get("set-cookie");
+  return { response, cookie: cookieHeader ? cookieHeader.split(";")[0] : "" };
+}
+
+function authHeaders(cookie) {
+  return { Cookie: cookie, "Content-Type": "application/json" };
+}
+
+test.before(async () => {
+  await new Promise((resolve) => {
+    server = app.listen(0, "127.0.0.1", () => {
+      baseUrl = `http://127.0.0.1:${server.address().port}`;
+      resolve();
+    });
+  });
+});
+
+test.after(async () => {
+  await new Promise((resolve) => server.close(resolve));
+  sessionStore.close();
+  db.close();
+});
+
+test("incremental migration preserves existing user and adds public beta schema", () => {
+  const legacy = db.prepare("SELECT * FROM users WHERE phone = ?").get("13900000001");
+  assert.equal(legacy.username, "legacy");
+  assert.equal(legacy.access_tier, "founder_trial");
+  assert.equal(legacy.primary_course, "english");
+  assert.match(legacy.social_name, /^BlockLearner-/);
+  const migration = db.prepare("SELECT version FROM schema_migrations WHERE version = ?").get("2026-08-09-public-beta-v1");
+  assert.ok(migration);
+  for (const table of ["admin_audit_logs", "registration_applications", "referral_links", "friendships", "friend_pk_bonus_events"]) {
+    assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+  }
+});
+
+test("admin login returns secure public user shape and persistent session cookie", async () => {
+  const result = await login("13800000000", "AdminPass123");
+  assert.equal(result.response.status, 200);
+  adminCookie = result.cookie;
+  const me = await fetch(`${baseUrl}/api/me`, { headers: { Cookie: adminCookie } });
+  assert.equal(me.status, 200);
+  const payload = await me.json();
+  assert.equal(payload.user.role, "admin");
+  assert.equal(payload.user.accessState, "founder_trial");
+  assert.ok(Array.isArray(payload.user.allowedThemeIds.english));
+  assert.ok(Array.isArray(payload.user.allowedThemeIds.chinese));
+});
+
+test("referral approval creates a free user and friendship atomically", async () => {
+  const founderLogin = await login("13900000001", "LegacyPass123");
+  assert.equal(founderLogin.response.status, 200);
+  const linkResponse = await fetch(`${baseUrl}/api/referrals/link`, {
+    method: "POST", headers: authHeaders(founderLogin.cookie), body: "{}"
+  });
+  assert.equal(linkResponse.status, 200);
+  const link = await linkResponse.json();
+  const token = new URL(link.link).searchParams.get("ref");
+  assert.ok(token);
+
+  const applicationResponse = await fetch(`${baseUrl}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone: "13700000002", password: "InvitePass123", referralToken: token, guardianConfirmed: true })
+  });
+  assert.equal(applicationResponse.status, 202);
+  const application = await applicationResponse.json();
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM users WHERE phone = ?").get("13700000002").count, 0);
+
+  const approval = await fetch(`${baseUrl}/api/admin/registration-applications/${application.applicationId}/approve`, {
+    method: "POST", headers: authHeaders(adminCookie), body: "{}"
+  });
+  assert.equal(approval.status, 200);
+  const invited = db.prepare("SELECT * FROM users WHERE phone = ?").get("13700000002");
+  assert.equal(invited.access_tier, "free_trial");
+  assert.ok(invited.trial_expires_at);
+  assert.equal(db.prepare("SELECT password_hash FROM registration_applications WHERE id = ?").get(application.applicationId).password_hash, "");
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM friendships WHERE user_low_id = ? OR user_high_id = ?").get(invited.id, invited.id).count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM admin_audit_logs WHERE action = 'registration.approve'").get().count, 1);
+});
+
+test("free user sees only trial themes and cannot bypass locked APIs", async () => {
+  const invitedLogin = await login("13700000002", "InvitePass123");
+  assert.equal(invitedLogin.response.status, 200);
+  invitedCookie = invitedLogin.cookie;
+  const themesResponse = await fetch(`${baseUrl}/api/themes`, { headers: { Cookie: invitedLogin.cookie } });
+  const themePayload = await themesResponse.json();
+  assert.equal(themePayload.themes.filter((theme) => !theme.locked).length, 3);
+  const lockedTheme = themePayload.themes.find((theme) => theme.locked);
+  assert.ok(lockedTheme);
+  const quiz = await fetch(`${baseUrl}/api/quiz/next`, {
+    method: "POST", headers: authHeaders(invitedLogin.cookie), body: JSON.stringify({ themeId: lockedTheme.id })
+  });
+  assert.equal(quiz.status, 403);
+  assert.equal((await quiz.json()).code, "THEME_LOCKED");
+  const tts = await fetch(`${baseUrl}/api/tts?text=${encodeURIComponent("not in vocabulary")}`, { headers: { Cookie: invitedLogin.cookie } });
+  assert.equal(tts.status, 403);
+  assert.equal((await tts.json()).code, "TTS_TEXT_NOT_ALLOWED");
+});
+
+test("HTML filenames cannot bypass page authorization", async () => {
+  const adminHtml = await fetch(`${baseUrl}/admin.html`, { headers: { Cookie: invitedCookie }, redirect: "manual" });
+  assert.equal(adminHtml.status, 404);
+  const chineseHtml = await fetch(`${baseUrl}/core-words-cn.html`, { headers: { Cookie: invitedCookie }, redirect: "manual" });
+  assert.equal(chineseHtml.status, 404);
+  const asset = await fetch(`${baseUrl}/minecraft-english-17.webp`, { headers: { Cookie: invitedCookie } });
+  assert.equal(asset.status, 200);
+});
+
+test("admin can filter experience users and see referral usage", async () => {
+  const response = await fetch(`${baseUrl}/api/admin/users?accessState=free_trial&primaryCourse=english`, { headers: { Cookie: adminCookie } });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.items.length, 1);
+  assert.equal(payload.items[0].phone, "13700000002");
+  assert.equal(payload.items[0].referral_max_uses, 20);
+});
+
+test("disabled accounts receive a stable API error code", async () => {
+  db.prepare("UPDATE users SET status = 'disabled' WHERE phone = ?").run("13700000002");
+  const me = await fetch(`${baseUrl}/api/me`, { headers: { Cookie: invitedCookie } });
+  assert.equal(me.status, 403);
+  assert.equal((await me.json()).code, "ACCOUNT_DISABLED");
+  const disabledLogin = await login("13700000002", "InvitePass123");
+  assert.equal(disabledLogin.response.status, 403);
+  assert.equal((await disabledLogin.response.json()).code, "ACCOUNT_DISABLED");
+});
+
+test("main inline page scripts parse", () => {
+  for (const filename of ["index.html", "core-words-cn.html", "admin.html", "friends.html", "register.html"]) {
+    const html = fs.readFileSync(path.join(__dirname, "..", "outputs", filename), "utf8");
+    const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map((match) => match[1]).filter(Boolean);
+    assert.ok(scripts.length, `${filename} should contain an inline script`);
+    for (const script of scripts) assert.doesNotThrow(() => new Function(script), `${filename} script should parse`);
+  }
+});
