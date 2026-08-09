@@ -556,6 +556,7 @@
 
     .answer.correct { background: #caffaf; border-color: #269f3c; }
     .answer.wrong { background: #ffd1bd; border-color: #c54e35; }
+    .answer:disabled { cursor: default; opacity: 1; }
 
     .reward-pop {
       animation: reward-pop .55s ease;
@@ -725,7 +726,7 @@
           <span class="quiz-thumb"><img id="quizImage" alt=""></span>
           <div>
             <div class="quiz-word" id="quizWord">Loading...</div>
-            <div class="feedback" id="feedback"></div>
+            <div class="feedback" id="feedback" role="status" aria-live="polite"></div>
           </div>
         </div>
         <button class="pill" id="speakQuizBtn" type="button">Hear Chinese</button>
@@ -774,6 +775,7 @@
   <script>
     const TTS_VERSION = "20260731-zh-501002";
     const TTS_VOICE_TYPE = "501002";
+    const AUTO_NEXT_DELAY_MS = 1000;
     const englishPreferenceKey = "minecraft-chinese-reader-show-english";
     const gemThemes = {
       coal: { main: "#3f4548", dark: "#171a1c", light: "#9ca5a8", glow: "rgba(190,205,210,.55)" },
@@ -794,6 +796,12 @@
     let preloadObserver = null;
     let rewardState = null;
     let currentUserAccess = null;
+    let studyMode = "learn";
+    let quizFlowState = "ready";
+    let quizTransitionId = 0;
+    let autoAdvanceTimer = null;
+    let autoAdvanceResolve = null;
+    let pendingAutoQuiz = null;
 
     const els = {
       themeTabs: document.querySelector("#themeTabs"),
@@ -880,11 +888,29 @@
       localStorage.setItem(englishPreferenceKey, visible ? "true" : "false");
     }
 
+    function cancelQuizTransition() {
+      quizTransitionId += 1;
+      if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
+      autoAdvanceTimer = null;
+      if (autoAdvanceResolve) autoAdvanceResolve();
+      autoAdvanceResolve = null;
+      pendingAutoQuiz = null;
+      quizFlowState = "ready";
+      els.quizBtn.disabled = false;
+      return quizTransitionId;
+    }
+
     function setStudyMode(mode, shouldScroll = true) {
-      document.body.dataset.studyMode = mode === "quiz" ? "quiz" : "learn";
+      const previousMode = studyMode;
+      studyMode = mode === "quiz" ? "quiz" : "learn";
+      if (studyMode !== "quiz") cancelQuizTransition();
+      document.body.dataset.studyMode = studyMode;
       if (shouldScroll) {
-        const target = mode === "quiz" ? els.quiz : els.cards;
-        setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: mode === "quiz" ? "end" : "start" }), 40);
+        const target = studyMode === "quiz" ? els.quiz : els.cards;
+        setTimeout(() => {
+          target.scrollIntoView({ behavior: "smooth", block: studyMode === "quiz" ? "end" : "start" });
+          if (studyMode === "quiz" && previousMode !== "quiz" && quizItem) speak(quizItem.speechText);
+        }, 40);
       }
     }
 
@@ -994,72 +1020,153 @@
       observeCardAudio(theme);
     }
 
-    async function newQuiz() {
-      const theme = themes[currentThemeIndex];
-      els.feedback.textContent = "Loading question...";
-      try {
-        quizItem = await api("/api/chinese/quiz/next", {
-          method: "POST",
-          body: JSON.stringify({ themeId: theme.id })
-        });
-      } catch (error) {
-        els.feedback.textContent = error.message;
-        return;
-      }
-      currentItem = theme.items.find((item) => item.id === quizItem.itemId) || currentItem;
-      els.quizWord.textContent = quizItem.english;
-      els.quizImage.src = quizItem.image;
-      els.quizImage.alt = quizItem.english;
+    async function fetchQuizData(theme) {
+      const data = await api("/api/chinese/quiz/next", {
+        method: "POST",
+        body: JSON.stringify({ themeId: theme.id })
+      });
+      if (!data?.itemId || !Array.isArray(data.options)) throw new Error("Question data is incomplete");
+      return data;
+    }
+
+    function correctFeedback(data) {
+      const events = Array.isArray(data.rewardEvents) ? data.rewardEvents : [];
+      const emeralds = events.reduce((sum, event) => sum + Math.max(0, Number(event.emeralds ?? event.exp ?? 0)), 0);
+      const fixedReview = events.some((event) => event.type === "review_fixed");
+      const reachedLimit = events.some((event) => String(event.label || "").includes("limit"));
+      const prefix = fixedReview ? "Review fixed!" : "Correct!";
+      if (emeralds > 0) return `${prefix} +${emeralds} Emeralds`;
+      if (reachedLimit) return `${prefix} Daily Emerald limit reached`;
+      return prefix;
+    }
+
+    function renderQuiz(data, theme, { autoSpeak = false, transitionId = quizTransitionId } = {}) {
+      if (transitionId !== quizTransitionId || theme !== themes[currentThemeIndex]) return false;
+      const questionItem = data;
+      quizItem = questionItem;
+      currentItem = theme.items.find((item) => item.id === questionItem.itemId) || currentItem;
+      els.quizWord.textContent = questionItem.english;
+      els.quizImage.src = questionItem.image;
+      els.quizImage.alt = questionItem.english;
       els.feedback.textContent = "Choose the Chinese answer.";
-      els.answers.innerHTML = quizItem.options.map((option) => `
+      els.answers.innerHTML = questionItem.options.map((option) => `
         <button class="answer" type="button" data-chinese="${escapeHtml(option)}" lang="zh-CN">${escapeHtml(option)}</button>
       `).join("");
-      preloadTts(quizItem.speechText);
+      preloadTts(questionItem.speechText);
+      quizFlowState = "ready";
+      els.quizBtn.disabled = false;
       let answered = false;
       els.answers.querySelectorAll(".answer").forEach((button) => {
         button.addEventListener("click", async () => {
-          if (answered) return;
+          if (answered || quizFlowState !== "ready") return;
           answered = true;
+          quizFlowState = "answering";
+          const answerButtons = [...els.answers.querySelectorAll(".answer")];
+          answerButtons.forEach((node) => { node.disabled = true; });
+          els.quizBtn.disabled = true;
           try {
             const data = await api("/api/chinese/quiz/answer", {
               method: "POST",
               body: JSON.stringify({
                 themeId: theme.id,
-                itemId: quizItem.itemId,
+                itemId: questionItem.itemId,
                 selectedChinese: button.dataset.chinese
               })
             });
-            els.answers.querySelectorAll(".answer").forEach((node) => {
-              node.disabled = true;
+            if (transitionId !== quizTransitionId) return;
+            answerButtons.forEach((node) => {
               if (node.dataset.chinese === data.correctChinese) node.classList.add("correct");
             });
             if (!data.correct) button.classList.add("wrong");
-            els.feedback.textContent = data.correct ? "Correct!" : `Correct answer: ${data.correctChinese}`;
             renderReward(data.rewardState);
             playRewardEvents(data.rewardEvents, button);
-            speak(quizItem.speechText);
+            if (data.correct) {
+              els.feedback.textContent = correctFeedback(data);
+              scheduleAutoAdvance(theme);
+            } else {
+              quizFlowState = "ready";
+              els.quizBtn.disabled = false;
+              els.feedback.textContent = `Correct answer: ${data.correctChinese}`;
+              speak(questionItem.speechText);
+            }
           } catch (error) {
+            if (transitionId !== quizTransitionId) return;
             answered = false;
+            quizFlowState = "ready";
+            answerButtons.forEach((node) => { node.disabled = false; });
+            els.quizBtn.disabled = false;
             els.feedback.textContent = error.message;
           }
         });
       });
+      if (autoSpeak) speak(questionItem.speechText);
+      return true;
+    }
+
+    async function newQuiz({ autoSpeak = true } = {}) {
+      const theme = themes[currentThemeIndex];
+      const prefetchedQuestion = pendingAutoQuiz?.theme === theme ? pendingAutoQuiz.promise : null;
+      const transitionId = cancelQuizTransition();
+      quizFlowState = "loading-next";
+      els.quizBtn.disabled = true;
+      els.feedback.textContent = "Loading question...";
+      try {
+        const data = await (prefetchedQuestion || fetchQuizData(theme));
+        renderQuiz(data, theme, { autoSpeak, transitionId });
+      } catch (error) {
+        if (transitionId !== quizTransitionId) return;
+        quizFlowState = "ready";
+        els.quizBtn.disabled = false;
+        els.feedback.textContent = `${error.message}. Select Next Question to retry.`;
+      }
+    }
+
+    async function scheduleAutoAdvance(theme) {
+      const transitionId = cancelQuizTransition();
+      quizFlowState = "success-feedback";
+      const successFeedback = els.feedback.textContent;
+      const request = fetchQuizData(theme);
+      pendingAutoQuiz = { theme, promise: request };
+      const nextQuestion = request.then(
+        (data) => ({ data }),
+        (error) => ({ error })
+      );
+      const feedbackDelay = new Promise((resolve) => {
+        autoAdvanceResolve = () => {
+          autoAdvanceTimer = null;
+          autoAdvanceResolve = null;
+          resolve();
+        };
+        autoAdvanceTimer = setTimeout(autoAdvanceResolve, AUTO_NEXT_DELAY_MS);
+      });
+      const [next] = await Promise.all([nextQuestion, feedbackDelay]);
+      if (transitionId !== quizTransitionId || theme !== themes[currentThemeIndex]) return;
+      pendingAutoQuiz = null;
+      if (next.error) {
+        quizFlowState = "ready";
+        els.quizBtn.disabled = false;
+        els.feedback.textContent = `${successFeedback} The next question failed to load. Select Next Question to retry.`;
+        return;
+      }
+      quizFlowState = "loading-next";
+      renderQuiz(next.data, theme, { autoSpeak: true, transitionId });
     }
 
     async function setTheme(index) {
-      currentThemeIndex = index;
       const theme = themes[index];
       if (theme.locked) {
         renderTabs();
         els.themeSubtitle.textContent = "This theme is locked during the free trial";
         return;
       }
+      currentThemeIndex = index;
       currentItem = theme.items[0] || null;
       els.themeTitle.textContent = theme.title;
       els.themeSubtitle.textContent = `${theme.items.length} Chinese words`;
       renderTabs();
       renderCards();
-      await newQuiz();
+      setStudyMode("learn", false);
+      await newQuiz({ autoSpeak: false });
     }
 
     async function init() {
@@ -1097,7 +1204,7 @@
     els.voiceBtn.addEventListener("click", () => speak(currentItem?.chinese));
     els.speakThemeBtn.addEventListener("click", () => speak(currentItem?.chinese));
     els.speakQuizBtn.addEventListener("click", () => speak(quizItem?.speechText));
-    els.quizBtn.addEventListener("click", newQuiz);
+    els.quizBtn.addEventListener("click", () => newQuiz({ autoSpeak: true }));
     els.scrollTopBtn.addEventListener("click", () => {
       setStudyMode("learn");
       els.cards.scrollTo({ top: 0, behavior: "smooth" });

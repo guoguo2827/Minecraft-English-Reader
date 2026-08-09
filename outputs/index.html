@@ -1341,7 +1341,7 @@
               <button class="big-action secondary" id="quizBtn" type="button">下一题</button>
             </div>
             <div class="answers" id="answers"></div>
-            <div class="feedback" id="feedback"></div>
+            <div class="feedback" id="feedback" role="status" aria-live="polite"></div>
           </section>
         </section>
       </section>
@@ -1971,9 +1971,15 @@
     let showCardChinese = localStorage.getItem(showCnStorageKey) !== "false";
     const TTS_VERSION = "20260710-501008";
     const TTS_VOICE_TYPE = "501008";
+    const AUTO_NEXT_DELAY_MS = 1000;
     const ttsPreloadCache = new Set();
     const ttsPreloadQueue = [];
     let ttsPreloadActive = false;
+    let quizFlowState = "ready";
+    let quizTransitionId = 0;
+    let autoAdvanceTimer = null;
+    let autoAdvanceResolve = null;
+    let pendingAutoQuiz = null;
     const gemThemes = {
       coal: { main: "#3f4548", dark: "#171a1c", light: "#9ca5a8", glow: "rgba(190,205,210,.55)" },
       iron: { main: "#c9d0d2", dark: "#6f777b", light: "#f6fbff", glow: "rgba(230,242,247,.62)" },
@@ -2053,12 +2059,29 @@
         && !currentUserAccess?.allowedThemeIds?.english?.includes(theme.id);
     }
 
+    function cancelQuizTransition() {
+      quizTransitionId += 1;
+      if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
+      autoAdvanceTimer = null;
+      if (autoAdvanceResolve) autoAdvanceResolve();
+      autoAdvanceResolve = null;
+      pendingAutoQuiz = null;
+      quizFlowState = "ready";
+      els.quizBtn.disabled = false;
+      return quizTransitionId;
+    }
+
     function setStudyMode(mode) {
+      const previousMode = studyMode;
       studyMode = mode === "quiz" ? "quiz" : "learn";
+      if (studyMode !== "quiz") cancelQuizTransition();
       document.body.dataset.studyMode = studyMode;
       requestAnimationFrame(() => {
         const target = studyMode === "quiz" ? els.quiz : els.cards;
-        setTimeout(() => target?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
+        setTimeout(() => {
+          target?.scrollIntoView({ behavior: "smooth", block: "start" });
+          if (studyMode === "quiz" && previousMode !== "quiz" && quizItem) speak(quizItem.word);
+        }, 30);
       });
     }
 
@@ -2444,88 +2467,171 @@
       };
     }
 
-    async function newQuiz() {
-      const theme = themes[currentThemeIndex];
-      let data;
+    async function fetchQuizData(theme) {
       try {
-        data = await api("/api/quiz/next", {
+        const data = await api("/api/quiz/next", {
           method: "POST",
           body: JSON.stringify({ themeId: theme.id })
         });
         if (!data?.word) throw new Error("题目数据不完整");
+        return data;
       } catch (error) {
-        if (location.protocol === "file:") {
-          data = makeLocalQuiz(theme);
-        } else {
-          quizItem = null;
-          els.quizWord.textContent = "连接失败";
-          els.feedback.textContent = `${error.message || "暂时无法连接服务器"}，请点击“下一题”重试`;
-          els.answers.innerHTML = "";
-          return;
-        }
+        if (location.protocol === "file:") return makeLocalQuiz(theme);
+        throw error;
       }
-      quizItem = theme.items.find((item) => item.word === data.word) || theme.items[0];
+    }
+
+    function correctFeedback(result) {
+      if (result.localOnly) return "答对了！本地练习不计入绿宝石";
+      const events = Array.isArray(result.rewardEvents) ? result.rewardEvents : [];
+      const emeralds = events.reduce((sum, event) => sum + Math.max(0, Number(event.emeralds ?? event.exp ?? 0)), 0);
+      const fixedReview = events.some((event) => event.type === "review_fixed");
+      const reachedLimit = events.some((event) => String(event.label || "").includes("上限"));
+      const prefix = fixedReview ? "错题已修正！" : "答对了！";
+      if (emeralds > 0) return `${prefix}获得 ${emeralds} 颗绿宝石`;
+      if (reachedLimit) return `${prefix}今日绿宝石已达上限`;
+      return prefix;
+    }
+
+    function renderQuiz(data, theme, { autoSpeak = false, transitionId = quizTransitionId } = {}) {
+      if (transitionId !== quizTransitionId || theme !== themes[currentThemeIndex]) return false;
+      const questionItem = theme.items.find((item) => item.word === data.word) || theme.items[0];
+      quizItem = questionItem;
       const options = Array.isArray(data.options) && data.options.length
         ? data.options
-        : makeQuizOptions(theme, quizItem);
-      preloadTts(quizItem.word);
-      els.quizWord.textContent = quizItem.word;
+        : makeQuizOptions(theme, questionItem);
+      preloadTts(questionItem.word);
+      els.quizWord.textContent = questionItem.word;
       els.feedback.textContent = "";
       els.answers.innerHTML = options.map((cn) => `
         <button class="answer" type="button" data-cn="${cn}">${cn}</button>
       `).join("");
+      quizFlowState = "ready";
+      els.quizBtn.disabled = false;
       let answered = false;
       els.answers.querySelectorAll(".answer").forEach((button) => {
         button.addEventListener("click", async () => {
-          if (answered) return;
+          if (answered || quizFlowState !== "ready") return;
           answered = true;
+          quizFlowState = "answering";
+          const answerButtons = [...els.answers.querySelectorAll(".answer")];
+          answerButtons.forEach((node) => { node.disabled = true; });
+          els.quizBtn.disabled = true;
           let result;
           if (data.localOnly) {
             result = {
-              correct: button.dataset.cn === quizItem.cn,
-              correctCn: quizItem.cn,
+              correct: button.dataset.cn === questionItem.cn,
+              correctCn: questionItem.cn,
               localOnly: true
             };
           } else {
             try {
               result = await api("/api/quiz/answer", {
                 method: "POST",
-                body: JSON.stringify({ themeId: theme.id, word: quizItem.word, selectedCn: button.dataset.cn })
+                body: JSON.stringify({ themeId: theme.id, word: questionItem.word, selectedCn: button.dataset.cn })
               });
             } catch (error) {
+              if (transitionId !== quizTransitionId) return;
               answered = false;
+              quizFlowState = "ready";
+              answerButtons.forEach((node) => { node.disabled = false; });
+              els.quizBtn.disabled = false;
               els.feedback.textContent = `${error.message || "答案提交失败"}，本题尚未计入绿宝石，请重试`;
               return;
             }
           }
+          if (transitionId !== quizTransitionId) return;
           if (result?.error) {
             answered = false;
+            quizFlowState = "ready";
+            answerButtons.forEach((node) => { node.disabled = false; });
+            els.quizBtn.disabled = false;
             els.feedback.textContent = result.error;
             return;
           }
           const correct = Boolean(result.correct);
-          els.answers.querySelectorAll(".answer").forEach((node) => {
-            node.disabled = true;
+          answerButtons.forEach((node) => {
             if (node.dataset.cn === result.correctCn) node.classList.add("correct");
           });
           if (!correct) button.classList.add("wrong");
-          els.feedback.textContent = result.localOnly
-            ? (correct ? "答对了！本地练习不计入绿宝石" : `正确答案：${result.correctCn}（本地练习不计入绿宝石）`)
-            : (correct ? "答对了！" : "正确答案：" + result.correctCn);
           handleRewardResponse(result, button);
-          speak(quizItem.word);
+          if (correct) {
+            els.feedback.textContent = correctFeedback(result);
+            scheduleAutoAdvance(theme);
+          } else {
+            quizFlowState = "ready";
+            els.quizBtn.disabled = false;
+            els.feedback.textContent = result.localOnly
+              ? `正确答案：${result.correctCn}（本地练习不计入绿宝石）`
+              : `正确答案：${result.correctCn}`;
+            speak(questionItem.word);
+          }
         });
       });
+      if (autoSpeak) speak(questionItem.word);
+      return true;
+    }
+
+    async function newQuiz({ autoSpeak = true } = {}) {
+      const theme = themes[currentThemeIndex];
+      const prefetchedQuestion = pendingAutoQuiz?.theme === theme ? pendingAutoQuiz.promise : null;
+      const transitionId = cancelQuizTransition();
+      quizFlowState = "loading-next";
+      els.quizBtn.disabled = true;
+      els.feedback.textContent = "正在加载下一题...";
+      try {
+        const data = await (prefetchedQuestion || fetchQuizData(theme));
+        renderQuiz(data, theme, { autoSpeak, transitionId });
+      } catch (error) {
+        if (transitionId !== quizTransitionId) return;
+        quizFlowState = "ready";
+        quizItem = null;
+        els.quizBtn.disabled = false;
+        els.quizWord.textContent = "连接失败";
+        els.feedback.textContent = `${error.message || "暂时无法连接服务器"}，请点击“下一题”重试`;
+        els.answers.innerHTML = "";
+      }
+    }
+
+    async function scheduleAutoAdvance(theme) {
+      const transitionId = cancelQuizTransition();
+      quizFlowState = "success-feedback";
+      const successFeedback = els.feedback.textContent;
+      const request = fetchQuizData(theme);
+      pendingAutoQuiz = { theme, promise: request };
+      const nextQuestion = request.then(
+        (data) => ({ data }),
+        (error) => ({ error })
+      );
+      const feedbackDelay = new Promise((resolve) => {
+        autoAdvanceResolve = () => {
+          autoAdvanceTimer = null;
+          autoAdvanceResolve = null;
+          resolve();
+        };
+        autoAdvanceTimer = setTimeout(autoAdvanceResolve, AUTO_NEXT_DELAY_MS);
+      });
+      const [next] = await Promise.all([nextQuestion, feedbackDelay]);
+      if (transitionId !== quizTransitionId || theme !== themes[currentThemeIndex]) return;
+      pendingAutoQuiz = null;
+      if (next.error) {
+        quizFlowState = "ready";
+        els.quizBtn.disabled = false;
+        els.feedback.textContent = `${successFeedback} 下一题加载失败，请点击“下一题”重试`;
+        return;
+      }
+      quizFlowState = "loading-next";
+      renderQuiz(next.data, theme, { autoSpeak: true, transitionId });
     }
 
     function setTheme(index) {
-      currentThemeIndex = index;
       const theme = themes[index];
       if (themeIsLocked(theme)) {
         renderTabs();
         els.feedback.textContent = "该主题不在当前体验范围内";
         return;
       }
+      currentThemeIndex = index;
       currentItem = theme.items[0];
       if (els.poster) {
         els.poster.src = theme.image;
@@ -2536,8 +2642,8 @@
       renderTabs();
       renderCards();
       preloadThemeAudio(theme);
-      newQuiz();
       setStudyMode("learn");
+      newQuiz({ autoSpeak: false });
     }
 
     els.themeTabs.addEventListener("click", (event) => {
@@ -2545,7 +2651,7 @@
       if (button) setTheme(Number(button.dataset.theme));
     });
 
-    els.quizBtn.addEventListener("click", newQuiz);
+    els.quizBtn.addEventListener("click", () => newQuiz({ autoSpeak: true }));
     els.speakQuizBtn.addEventListener("click", () => quizItem && speak(quizItem.word));
     els.voiceStatus.addEventListener("click", unlockVoice);
     els.logoutBtn.addEventListener("click", async () => {
