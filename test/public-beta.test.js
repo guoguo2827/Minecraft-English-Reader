@@ -83,6 +83,8 @@ test("incremental migration preserves existing user and adds public beta schema"
   assert.match(legacy.social_name, /^BlockLearner-/);
   const migration = db.prepare("SELECT version FROM schema_migrations WHERE version = ?").get("2026-08-09-public-beta-v1");
   assert.ok(migration);
+  assert.ok(db.prepare("SELECT version FROM schema_migrations WHERE version = ?")
+    .get("2026-08-09-review-three-correct-v1"));
   for (const table of ["admin_audit_logs", "registration_applications", "referral_links", "friendships", "friend_pk_bonus_events"]) {
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
   }

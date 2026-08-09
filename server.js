@@ -405,6 +405,25 @@ function applyPublicBetaMigration() {
   })();
 }
 
+function applyThreeCorrectReviewMigration() {
+  const version = "2026-08-09-review-three-correct-v1";
+  if (migrationApplied(version)) return;
+  db.transaction(() => {
+    const updatedAt = now();
+    db.prepare(`
+      UPDATE review_queue
+      SET status = 'active', updated_at = ?
+      WHERE status = 'fixed' AND consecutive_fix_count < 3
+    `).run(updatedAt);
+    db.prepare(`
+      UPDATE chinese_review_queue
+      SET status = 'active', updated_at = ?
+      WHERE status = 'fixed' AND consecutive_fix_count < 3
+    `).run(updatedAt);
+    markMigration(version);
+  })();
+}
+
 function initDb() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -615,6 +634,7 @@ function initDb() {
     db.exec("ALTER TABLE users ADD COLUMN password_reset_required INTEGER NOT NULL DEFAULT 0");
   }
   applyPublicBetaMigration();
+  applyThreeCorrectReviewMigration();
 }
 
 function ensureAdmin() {
