@@ -180,6 +180,59 @@ test("admin can filter experience users and see referral usage", async () => {
   assert.equal(payload.items[0].referral_max_uses, 20);
 });
 
+test("correct quiz answers persist Emerald rewards for both courses", async () => {
+  const englishThemesResponse = await fetch(`${baseUrl}/api/themes`, { headers: { Cookie: invitedCookie } });
+  const englishThemes = await englishThemesResponse.json();
+  const englishTheme = englishThemes.themes.find((theme) => !theme.locked);
+  const englishItem = englishTheme.items[0];
+  const englishAnswerResponse = await fetch(`${baseUrl}/api/quiz/answer`, {
+    method: "POST",
+    headers: authHeaders(invitedCookie),
+    body: JSON.stringify({ themeId: englishTheme.id, word: englishItem.word, selectedCn: englishItem.cn })
+  });
+  assert.equal(englishAnswerResponse.status, 200);
+  const englishAnswer = await englishAnswerResponse.json();
+  assert.equal(englishAnswer.correct, true);
+  assert.equal(englishAnswer.rewardState.totalEmeralds, 5);
+  assert.equal(englishAnswer.rewardEvents[0].emeralds, 5);
+  const invited = db.prepare("SELECT id FROM users WHERE phone = ?").get("13700000002");
+  assert.equal(db.prepare("SELECT total_exp FROM user_rewards WHERE user_id = ?").get(invited.id).total_exp, 5);
+
+  const chineseThemesResponse = await fetch(`${baseUrl}/api/chinese/themes`, { headers: { Cookie: adminCookie } });
+  const chineseThemes = await chineseThemesResponse.json();
+  const chineseTheme = chineseThemes.themes[0];
+  const chineseItem = chineseTheme.items[0];
+  const chineseAnswerResponse = await fetch(`${baseUrl}/api/chinese/quiz/answer`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ themeId: chineseTheme.id, itemId: chineseItem.id, selectedChinese: chineseItem.chinese })
+  });
+  assert.equal(chineseAnswerResponse.status, 200);
+  const chineseAnswer = await chineseAnswerResponse.json();
+  assert.equal(chineseAnswer.correct, true);
+  assert.equal(chineseAnswer.rewardState.totalEmeralds, 5);
+  assert.equal(chineseAnswer.rewardEvents[0].emeralds, 5);
+});
+
+test("daily Emerald cap returns an explicit zero-reward message", async () => {
+  const invited = db.prepare("SELECT id FROM users WHERE phone = ?").get("13700000002");
+  db.prepare("UPDATE user_rewards SET today_exp = 150 WHERE user_id = ?").run(invited.id);
+  const themesResponse = await fetch(`${baseUrl}/api/themes`, { headers: { Cookie: invitedCookie } });
+  const themes = await themesResponse.json();
+  const theme = themes.themes.find((candidate) => !candidate.locked);
+  const item = theme.items[1];
+  const response = await fetch(`${baseUrl}/api/quiz/answer`, {
+    method: "POST",
+    headers: authHeaders(invitedCookie),
+    body: JSON.stringify({ themeId: theme.id, word: item.word, selectedCn: item.cn })
+  });
+  assert.equal(response.status, 200);
+  const answer = await response.json();
+  assert.equal(answer.correct, true);
+  assert.equal(answer.rewardEvents[0].emeralds, 0);
+  assert.match(answer.rewardEvents[0].label, /今日绿宝石已达上限/);
+});
+
 test("disabled accounts receive a stable API error code", async () => {
   db.prepare("UPDATE users SET status = 'disabled' WHERE phone = ?").run("13700000002");
   const me = await fetch(`${baseUrl}/api/me`, { headers: { Cookie: invitedCookie } });

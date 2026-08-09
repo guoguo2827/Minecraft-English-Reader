@@ -2446,11 +2446,24 @@
 
     async function newQuiz() {
       const theme = themes[currentThemeIndex];
-      let data = await api("/api/quiz/next", {
-        method: "POST",
-        body: JSON.stringify({ themeId: theme.id })
-      }).catch(() => null);
-      if (!data?.word) data = makeLocalQuiz(theme);
+      let data;
+      try {
+        data = await api("/api/quiz/next", {
+          method: "POST",
+          body: JSON.stringify({ themeId: theme.id })
+        });
+        if (!data?.word) throw new Error("题目数据不完整");
+      } catch (error) {
+        if (location.protocol === "file:") {
+          data = makeLocalQuiz(theme);
+        } else {
+          quizItem = null;
+          els.quizWord.textContent = "连接失败";
+          els.feedback.textContent = `${error.message || "暂时无法连接服务器"}，请点击“下一题”重试`;
+          els.answers.innerHTML = "";
+          return;
+        }
+      }
       quizItem = theme.items.find((item) => item.word === data.word) || theme.items[0];
       const options = Array.isArray(data.options) && data.options.length
         ? data.options
@@ -2466,18 +2479,24 @@
         button.addEventListener("click", async () => {
           if (answered) return;
           answered = true;
-          let result = data.localOnly
-            ? null
-            : await api("/api/quiz/answer", {
-              method: "POST",
-              body: JSON.stringify({ themeId: theme.id, word: quizItem.word, selectedCn: button.dataset.cn })
-            }).catch(() => null);
-          if (!result) {
+          let result;
+          if (data.localOnly) {
             result = {
               correct: button.dataset.cn === quizItem.cn,
               correctCn: quizItem.cn,
               localOnly: true
             };
+          } else {
+            try {
+              result = await api("/api/quiz/answer", {
+                method: "POST",
+                body: JSON.stringify({ themeId: theme.id, word: quizItem.word, selectedCn: button.dataset.cn })
+              });
+            } catch (error) {
+              answered = false;
+              els.feedback.textContent = `${error.message || "答案提交失败"}，本题尚未计入绿宝石，请重试`;
+              return;
+            }
           }
           if (result?.error) {
             answered = false;
@@ -2490,10 +2509,12 @@
             if (node.dataset.cn === result.correctCn) node.classList.add("correct");
           });
           if (!correct) button.classList.add("wrong");
-          els.feedback.textContent = correct ? "答对了！" : "正确答案：" + result.correctCn;
+          els.feedback.textContent = result.localOnly
+            ? (correct ? "答对了！本地练习不计入绿宝石" : `正确答案：${result.correctCn}（本地练习不计入绿宝石）`)
+            : (correct ? "答对了！" : "正确答案：" + result.correctCn);
           handleRewardResponse(result, button);
           speak(quizItem.word);
-        }, { once: true });
+        });
       });
     }
 

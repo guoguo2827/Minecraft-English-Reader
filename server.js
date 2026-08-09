@@ -1234,6 +1234,9 @@ function grantReward(userId, event) {
   const remainingDailyExp = Math.max(0, dailyExpLimit - row.today_exp);
   const grantedExp = Math.min(requestedExp, remainingDailyExp);
   const label = event.label || "";
+  const awardedLabel = requestedExp > 0 && grantedExp === 0
+    ? `${label}（今日绿宝石已达上限）`
+    : label;
   let inserted = null;
   try {
     const result = db.prepare(`
@@ -1243,13 +1246,13 @@ function grantReward(userId, event) {
       userId,
       event.type,
       grantedExp,
-      requestedExp > 0 && grantedExp === 0 ? `${label}（今日绿宝石已达上限）` : label,
+      awardedLabel,
       event.themeId || "",
       event.word || "",
       event.uniqueKey || null,
       now()
     );
-    inserted = { id: result.lastInsertRowid, ...event, exp: grantedExp };
+    inserted = { id: result.lastInsertRowid, ...event, label: awardedLabel, exp: grantedExp };
   } catch (error) {
     if (!event.uniqueKey || !String(error.message || "").includes("UNIQUE")) throw error;
     return { events: [], state: rewardSummary(userId) };
@@ -1519,6 +1522,9 @@ function chineseGrantReward(userId, event) {
   const beforeLevel = chineseLevelInfo(row.total_exp).level;
   const requestedExp = Math.max(0, Number(event.exp || 0));
   const grantedExp = Math.min(requestedExp, Math.max(0, dailyExpLimit - row.today_exp));
+  const awardedLabel = requestedExp > 0 && grantedExp === 0
+    ? `${event.label || "Reward"} (daily Emerald limit reached)`
+    : (event.label || "");
   try {
     db.prepare(`
       INSERT INTO chinese_reward_events (user_id, event_type, exp, label, theme_id, item_id, unique_key, created_at)
@@ -1527,7 +1533,7 @@ function chineseGrantReward(userId, event) {
       userId,
       event.type,
       grantedExp,
-      requestedExp > 0 && grantedExp === 0 ? `${event.label || "Reward"} (daily Emerald limit reached)` : (event.label || ""),
+      awardedLabel,
       event.themeId || "",
       event.itemId || "",
       event.uniqueKey || null,
@@ -1546,7 +1552,7 @@ function chineseGrantReward(userId, event) {
     `).run(grantedExp, grantedExp, now(), userId);
   }
   const state = chineseRewardSummary(userId);
-  const events = [{ type: event.type, emeralds: grantedExp, exp: grantedExp, label: event.label || "", themeId: event.themeId || "", itemId: event.itemId || "" }];
+  const events = [{ type: event.type, emeralds: grantedExp, exp: grantedExp, label: awardedLabel, themeId: event.themeId || "", itemId: event.itemId || "" }];
   if (state.level > beforeLevel) {
     events.push({ type: "level_up", emeralds: 0, exp: 0, label: `Level up: ${state.title}`, level: state.level, gemKey: state.gemKey });
   }
