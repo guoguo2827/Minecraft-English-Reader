@@ -33,7 +33,8 @@
     const form = document.querySelector("#registerForm");
     const message = document.querySelector("#message");
     const params = new URLSearchParams(location.search);
-    const referralToken = params.get("ref") || "";
+    const fragmentParams = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const referralToken = fragmentParams.get("ref") || params.get("ref") || "";
     const requestedNext = params.get("next") || "";
     const nextPath = /^\/chinese(?:\/|$)/.test(requestedNext) ? requestedNext : "/";
     const referralMode = Boolean(referralToken);
@@ -76,7 +77,11 @@
       document.querySelector("#guardianField").hidden = false;
       document.querySelector("#registerNotice").textContent = "审核期间不会消耗体验天数。管理员批准后即可使用手机号和密码登录。";
       document.querySelector("#submitBtn").textContent = "提交审核申请";
-      const response = await fetch(`/api/referrals/preview?token=${encodeURIComponent(referralToken)}`);
+      const response = await fetch("/api/referrals/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: referralToken })
+      });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         form.querySelectorAll("input, button").forEach((element) => { element.disabled = true; });

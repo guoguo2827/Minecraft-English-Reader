@@ -1861,7 +1861,7 @@ function createFriendship(userA, userB, course) {
 function referralUrl(req, userId, version) {
   const configuredBase = String(process.env.APP_BASE_URL || "").replace(/\/$/, "");
   const base = configuredBase || `${req.protocol}://${req.get("host")}`;
-  return `${base}/register?ref=${encodeURIComponent(referralToken(userId, version))}`;
+  return `${base}/register#ref=${encodeURIComponent(referralToken(userId, version))}`;
 }
 
 function primaryCourseTables(course) {
@@ -2013,14 +2013,22 @@ app.get("/friends", requirePasswordReadyPage, (req, res) => res.sendFile(path.jo
 app.get("/access-status", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "access-status.html")));
 app.get("/admin", requireAdminPage, (req, res) => res.sendFile(path.join(publicDir, "admin.html")));
 
-app.get("/api/referrals/preview", (req, res) => {
-  const referral = activeReferralFromToken(req.query.token);
+function sendReferralPreview(token, res) {
+  const referral = activeReferralFromToken(token);
   if (!referral) return res.status(404).json({ code: "REFERRAL_INVALID", error: "邀请链接无效或已达到使用上限" });
   return res.json({
     socialName: referral.social_name,
     primaryCourse: referral.primary_course,
     remainingUses: referral.max_uses - referral.success_count
   });
+}
+
+app.get("/api/referrals/preview", (req, res) => {
+  return sendReferralPreview(req.query.token, res);
+});
+
+app.post("/api/referrals/preview", (req, res) => {
+  return sendReferralPreview(req.body?.token, res);
 });
 
 app.post("/api/auth/register", limitRegisterIp, limitRegisterPhone, (req, res) => {

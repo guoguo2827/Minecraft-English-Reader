@@ -109,8 +109,18 @@ test("referral approval creates a free user and friendship atomically", async ()
   });
   assert.equal(linkResponse.status, 200);
   const link = await linkResponse.json();
-  const token = new URL(link.link).searchParams.get("ref");
+  const invitationUrl = new URL(link.link);
+  const token = new URLSearchParams(invitationUrl.hash.slice(1)).get("ref");
+  assert.equal(invitationUrl.search, "");
   assert.ok(token);
+
+  const previewResponse = await fetch(`${baseUrl}/api/referrals/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token })
+  });
+  assert.equal(previewResponse.status, 200);
+  assert.equal((await previewResponse.json()).primaryCourse, "english");
 
   const applicationResponse = await fetch(`${baseUrl}/api/auth/register`, {
     method: "POST",
