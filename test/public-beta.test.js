@@ -85,9 +85,12 @@ test("incremental migration preserves existing user and adds public beta schema"
   assert.ok(migration);
   assert.ok(db.prepare("SELECT version FROM schema_migrations WHERE version = ?")
     .get("2026-08-09-review-three-correct-v1"));
-  for (const table of ["admin_audit_logs", "registration_applications", "referral_links", "friendships", "friend_pk_bonus_events"]) {
+  assert.ok(db.prepare("SELECT version FROM schema_migrations WHERE version = ?")
+    .get("2026-08-10-admin-dashboard-v1"));
+  for (const table of ["admin_audit_logs", "registration_applications", "referral_links", "friendships", "friend_pk_bonus_events", "user_login_days"]) {
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
   }
+  assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_user_login_days_date'").get());
 });
 
 test("admin login returns secure public user shape and persistent session cookie", async () => {
@@ -316,6 +319,73 @@ test("Chinese review words use the same three-correct daily rest rule", async ()
   }
 });
 
+test("admin dashboard separates login, learning and historical totals", async () => {
+  const failedLogin = await login("13900000001", "WrongPassword123");
+  assert.equal(failedLogin.response.status, 401);
+  const legacy = db.prepare("SELECT id FROM users WHERE phone = ?").get("13900000001");
+  const legacyLoginDay = db.prepare("SELECT login_count FROM user_login_days WHERE user_id = ?").get(legacy.id);
+  assert.equal(legacyLoginDay.login_count, 1, "failed logins must not increment daily login totals");
+
+  const dashboardResponse = await fetch(`${baseUrl}/api/admin/dashboard`, { headers: { Cookie: adminCookie } });
+  assert.equal(dashboardResponse.status, 200);
+  const dashboard = await dashboardResponse.json();
+  assert.equal(dashboard.summary.loginUsers, 2, "admin login should be excluded");
+  assert.equal(dashboard.summary.learningUsers, 1, "learning users should be unique across courses");
+  assert.equal(dashboard.summary.loggedOnlyUsers, 1);
+  assert.ok(dashboard.summary.answers > 0);
+  assert.equal(dashboard.courses.chinese.learningUsers, 0, "admin course activity should be excluded");
+  assert.equal(dashboard.trend.length, 7);
+
+  const activeResponse = await fetch(`${baseUrl}/api/admin/dashboard/active-users?layer=quiz&course=all`, {
+    headers: { Cookie: adminCookie }
+  });
+  assert.equal(activeResponse.status, 200);
+  const active = await activeResponse.json();
+  assert.equal(active.total, 1);
+  assert.equal(active.items[0].phone, "13700000002");
+
+  const historyResponse = await fetch(`${baseUrl}/api/admin/dashboard/history`, { headers: { Cookie: adminCookie } });
+  assert.equal(historyResponse.status, 200);
+  const history = await historyResponse.json();
+  assert.equal(history.overall.totalUsers, 2);
+  assert.equal(history.overall.learningUsers, 1);
+  assert.equal(history.overall.studyDays, 1);
+  assert.ok(history.overall.answers > 0);
+  assert.equal(history.courses.chinese.learningUsers, 0);
+  assert.equal(history.invitations.referralApplications.approved, 1);
+  assert.match(history.loginTrackingStartedAt, /^\d{4}-\d{2}-\d{2}$/);
+
+  const courseResponse = await fetch(`${baseUrl}/api/admin/course-summary?course=english&range=today`, {
+    headers: { Cookie: adminCookie }
+  });
+  assert.equal(courseResponse.status, 200);
+  const course = await courseResponse.json();
+  assert.equal(course.emeralds, 5);
+  assert.equal(course.topUsers.length, 1);
+  assert.equal(course.topUsers[0].phone, "13700000002");
+
+  const invited = db.prepare("SELECT id FROM users WHERE phone = ?").get("13700000002");
+  const englishProgressResponse = await fetch(`${baseUrl}/api/admin/users/${invited.id}/progress?course=english`, {
+    headers: { Cookie: adminCookie }
+  });
+  const chineseProgressResponse = await fetch(`${baseUrl}/api/admin/users/${invited.id}/progress?course=chinese`, {
+    headers: { Cookie: adminCookie }
+  });
+  assert.ok((await englishProgressResponse.json()).recentDays.length > 0);
+  assert.equal((await chineseProgressResponse.json()).recentDays.length, 0, "recent dates should follow the selected course");
+});
+
+test("social dashboard is read-only and reports referral relationships", async () => {
+  const response = await fetch(`${baseUrl}/api/admin/social-summary`, { headers: { Cookie: adminCookie } });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.summary.approvedReferrals, 1);
+  assert.equal(payload.summary.friendships, 1);
+  assert.equal(payload.topInviters.length, 1);
+  assert.equal(payload.recentFriendships.length, 1);
+  assert.equal(payload.trend.length, 7);
+});
+
 test("disabled accounts receive a stable API error code", async () => {
   db.prepare("UPDATE users SET status = 'disabled' WHERE phone = ?").run("13700000002");
   const me = await fetch(`${baseUrl}/api/me`, { headers: { Cookie: invitedCookie } });
@@ -324,6 +394,11 @@ test("disabled accounts receive a stable API error code", async () => {
   const disabledLogin = await login("13700000002", "InvitePass123");
   assert.equal(disabledLogin.response.status, 403);
   assert.equal((await disabledLogin.response.json()).code, "ACCOUNT_DISABLED");
+  const filtered = await fetch(`${baseUrl}/api/admin/users?status=disabled`, { headers: { Cookie: adminCookie } });
+  assert.equal(filtered.status, 200);
+  const filteredPayload = await filtered.json();
+  assert.equal(filteredPayload.total, 1);
+  assert.equal(filteredPayload.items[0].phone, "13700000002");
 });
 
 test("main inline page scripts parse", () => {

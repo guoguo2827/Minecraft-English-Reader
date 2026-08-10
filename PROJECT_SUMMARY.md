@@ -38,4 +38,8 @@ Weekly PK uses primary-course emerald events from Monday 00:00 Asia/Shanghai. Th
 
 Migration `2026-08-09-public-beta-v1` only adds columns and tables. Existing progress, review, reward, whitelist and account rows are not moved or recalculated. All administrator account, whitelist, access, review and password-reset actions are logged with redacted details and hashed IP addresses for 90 days.
 
+Migration `2026-08-10-admin-dashboard-v1` adds only the daily successful-login table and query indexes. Historical learning totals are calculated from the existing course tables; login users and login counts are explicitly tracked only from this migration's deployment date and are never backfilled.
+
+The administrator workspace is split into overview, users and access, courses and learning, invitations and access, read-only social operations, and security logs. Its overview provides Beijing-time daily activity, seven-day trends, historical totals and operational reminders without changing course records.
+
 Before every production update, stop the English PM2 process, run `deploy/backup-sqlite.sh`, verify the backup, pull code, install locked dependencies, run `npm run migrate`, then restart and smoke-test.

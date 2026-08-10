@@ -424,6 +424,31 @@ function applyThreeCorrectReviewMigration() {
   })();
 }
 
+function applyAdminDashboardMigration() {
+  const version = "2026-08-10-admin-dashboard-v1";
+  if (migrationApplied(version)) return;
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS user_login_days (
+        user_id INTEGER NOT NULL,
+        login_date TEXT NOT NULL,
+        login_count INTEGER NOT NULL DEFAULT 1,
+        first_login_at TEXT NOT NULL,
+        last_login_at TEXT NOT NULL,
+        PRIMARY KEY(user_id, login_date),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_login_days_date ON user_login_days(login_date, user_id);
+      CREATE INDEX IF NOT EXISTS idx_study_sessions_date ON study_sessions(study_date, user_id);
+      CREATE INDEX IF NOT EXISTS idx_chinese_study_sessions_date ON chinese_study_sessions(study_date, user_id);
+      CREATE INDEX IF NOT EXISTS idx_users_last_login ON users(last_login_at);
+      CREATE INDEX IF NOT EXISTS idx_friendships_created ON friendships(created_at);
+    `);
+    markMigration(version);
+  })();
+}
+
 function initDb() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -635,6 +660,7 @@ function initDb() {
   }
   applyPublicBetaMigration();
   applyThreeCorrectReviewMigration();
+  applyAdminDashboardMigration();
 }
 
 function ensureAdmin() {
@@ -719,6 +745,33 @@ function weekRange(value = new Date()) {
   const start = new Date(mondayLocal.getTime() - 8 * 60 * 60 * 1000);
   const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
   return { weekKey: mondayLocal.toISOString().slice(0, 10), start: start.toISOString(), end: end.toISOString() };
+}
+
+function validDateKey(value) {
+  const key = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return "";
+  const parsed = new Date(`${key}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === key ? key : "";
+}
+
+function shiftDateKey(dateKey, days) {
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function dateKeyRange(dateKey) {
+  const start = new Date(`${dateKey}T00:00:00+08:00`);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function adminDashboardDate(value) {
+  const today = shanghaiDateKey();
+  const requested = value ? validDateKey(value) : today;
+  const earliest = shiftDateKey(today, -29);
+  if (!requested || requested < earliest || requested > today) return null;
+  return requested;
 }
 
 function userAccessState(user, at = new Date()) {
@@ -1175,6 +1228,18 @@ function progressSummary(userId) {
 
 function todayKey() {
   return shanghaiDateKey();
+}
+
+function recordSuccessfulLogin(userId) {
+  const timestamp = now();
+  const loginDate = shanghaiDateKey();
+  db.prepare(`
+    INSERT INTO user_login_days (user_id, login_date, login_count, first_login_at, last_login_at)
+    VALUES (?, ?, 1, ?, ?)
+    ON CONFLICT(user_id, login_date)
+    DO UPDATE SET login_count = login_count + 1, last_login_at = excluded.last_login_at
+  `).run(userId, loginDate, timestamp, timestamp);
+  db.prepare("UPDATE users SET last_login_at = ? WHERE id = ?").run(timestamp, userId);
 }
 
 function ensureRewardRow(userId) {
@@ -1793,10 +1858,77 @@ function chineseProgressSummary(userId) {
   return { totals, themes: themeSummaries };
 }
 
-function adminCourseOverview(course) {
+function adminThemeOverview(course) {
+  const isChinese = course === "chinese";
+  const progressTable = isChinese ? "chinese_word_progress" : "word_progress";
+  const courseThemes = isChinese ? chineseThemes : themes;
+  const rows = db.prepare(`
+    SELECT p.theme_id AS themeId, COUNT(DISTINCT p.user_id) AS learnerCount,
+           COALESCE(SUM(p.read_count), 0) AS readCount,
+           COALESCE(SUM(p.answer_count), 0) AS answerCount,
+           COALESCE(SUM(p.correct_count), 0) AS correctCount,
+           COALESCE(SUM(CASE WHEN p.mastery_status = 'mastered' THEN 1 ELSE 0 END), 0) AS masteredWords
+    FROM ${progressTable} p JOIN users u ON u.id = p.user_id
+    WHERE u.role != 'admin' GROUP BY p.theme_id
+  `).all();
+  const byTheme = new Map(rows.map((row) => [row.themeId, row]));
+  return courseThemes.map((theme) => {
+    const row = byTheme.get(theme.id) || {};
+    return {
+      id: theme.id,
+      title: theme.title,
+      totalWords: theme.items.length,
+      learnerCount: row.learnerCount || 0,
+      readCount: row.readCount || 0,
+      answerCount: row.answerCount || 0,
+      correctCount: row.correctCount || 0,
+      masteredWords: row.masteredWords || 0,
+      accuracy: row.answerCount ? Math.round((row.correctCount / row.answerCount) * 100) : 0
+    };
+  });
+}
+
+function adminCourseRanking(course, range) {
+  const isChinese = course === "chinese";
+  const progressTable = isChinese ? "chinese_word_progress" : "word_progress";
+  const sessionTable = isChinese ? "chinese_study_sessions" : "study_sessions";
+  if (range === "today" || range === "7d") {
+    const end = shanghaiDateKey();
+    const start = range === "today" ? end : shiftDateKey(end, -6);
+    return db.prepare(`
+      SELECT u.id, u.phone, u.social_name AS socialName,
+             COALESCE(SUM(s.read_count), 0) AS readCount,
+             COALESCE(SUM(s.answer_count), 0) AS answerCount,
+             COALESCE(SUM(s.correct_count), 0) AS correctCount,
+             COALESCE((SELECT COUNT(*) FROM ${progressTable} p
+                       WHERE p.user_id = u.id AND p.mastery_status = 'mastered'), 0) AS masteredWords
+      FROM ${sessionTable} s JOIN users u ON u.id = s.user_id
+      WHERE u.role != 'admin' AND s.study_date >= ? AND s.study_date <= ?
+      GROUP BY u.id
+      ORDER BY answerCount DESC, readCount DESC, u.id ASC
+      LIMIT 10
+    `).all(start, end);
+  }
+  return db.prepare(`
+    SELECT u.id, u.phone, u.social_name AS socialName,
+           COALESCE(SUM(p.read_count), 0) AS readCount,
+           COALESCE(SUM(p.answer_count), 0) AS answerCount,
+           COALESCE(SUM(p.correct_count), 0) AS correctCount,
+           COALESCE(SUM(CASE WHEN p.mastery_status = 'mastered' THEN 1 ELSE 0 END), 0) AS masteredWords
+    FROM ${progressTable} p JOIN users u ON u.id = p.user_id
+    WHERE u.role != 'admin'
+    GROUP BY u.id
+    ORDER BY answerCount DESC, readCount DESC, u.id ASC
+    LIMIT 10
+  `).all();
+}
+
+function adminCourseOverview(course, range = "history") {
   const isChinese = course === "chinese";
   const progressTable = isChinese ? "chinese_word_progress" : "word_progress";
   const reviewTable = isChinese ? "chinese_review_queue" : "review_queue";
+  const sessionTable = isChinese ? "chinese_study_sessions" : "study_sessions";
+  const rewardEventsTable = isChinese ? "chinese_reward_events" : "reward_events";
   const courseThemes = isChinese ? chineseThemes : themes;
   const vocabularySize = courseThemes.reduce((total, theme) => total + theme.items.length, 0);
   const users = db.prepare(`
@@ -1805,24 +1937,60 @@ function adminCourseOverview(course) {
       SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS activeUsers
     FROM users WHERE role != 'admin'
   `).get();
-  const learning = db.prepare(`
-    SELECT
-      COUNT(DISTINCT p.user_id) AS learnerCount,
-      COALESCE(SUM(p.read_count), 0) AS readCount,
-      COALESCE(SUM(p.answer_count), 0) AS answerCount,
-      COALESCE(SUM(p.correct_count), 0) AS correctCount,
-      COALESCE(SUM(CASE WHEN p.mastery_status = 'mastered' THEN 1 ELSE 0 END), 0) AS masteredWords,
-      MAX(p.last_studied_at) AS lastStudiedAt
-    FROM ${progressTable} p
-    JOIN users u ON u.id = p.user_id
-    WHERE u.role != 'admin'
-  `).get();
+  let learning;
+  if (range === "today" || range === "7d") {
+    const end = shanghaiDateKey();
+    const start = range === "today" ? end : shiftDateKey(end, -6);
+    learning = db.prepare(`
+      SELECT COUNT(DISTINCT s.user_id) AS learnerCount,
+             COALESCE(SUM(s.read_count), 0) AS readCount,
+             COALESCE(SUM(s.answer_count), 0) AS answerCount,
+             COALESCE(SUM(s.correct_count), 0) AS correctCount,
+             MAX(s.updated_at) AS lastStudiedAt
+      FROM ${sessionTable} s JOIN users u ON u.id = s.user_id
+      WHERE u.role != 'admin' AND s.study_date >= ? AND s.study_date <= ?
+    `).get(start, end);
+    learning.masteredWords = db.prepare(`
+      SELECT COUNT(*) AS count FROM ${progressTable} p JOIN users u ON u.id = p.user_id
+      WHERE p.mastery_status = 'mastered' AND u.role != 'admin'
+    `).get().count;
+  } else {
+    learning = db.prepare(`
+      SELECT
+        COUNT(DISTINCT p.user_id) AS learnerCount,
+        COALESCE(SUM(p.read_count), 0) AS readCount,
+        COALESCE(SUM(p.answer_count), 0) AS answerCount,
+        COALESCE(SUM(p.correct_count), 0) AS correctCount,
+        COALESCE(SUM(CASE WHEN p.mastery_status = 'mastered' THEN 1 ELSE 0 END), 0) AS masteredWords,
+        MAX(p.last_studied_at) AS lastStudiedAt
+      FROM ${progressTable} p
+      JOIN users u ON u.id = p.user_id
+      WHERE u.role != 'admin'
+    `).get();
+  }
   const reviewCount = db.prepare(`
     SELECT COUNT(*) AS count
     FROM ${reviewTable} q
     JOIN users u ON u.id = q.user_id
     WHERE q.status = 'active' AND u.role != 'admin'
   `).get().count;
+  let emeralds;
+  if (range === "today" || range === "7d") {
+    const endDate = shanghaiDateKey();
+    const startDate = range === "today" ? endDate : shiftDateKey(endDate, -6);
+    const start = dateKeyRange(startDate).start;
+    const end = dateKeyRange(endDate).end;
+    emeralds = db.prepare(`
+      SELECT COALESCE(SUM(r.exp), 0) AS value FROM ${rewardEventsTable} r
+      JOIN users u ON u.id = r.user_id
+      WHERE u.role != 'admin' AND r.created_at >= ? AND r.created_at < ?
+    `).get(start, end).value;
+  } else {
+    emeralds = db.prepare(`
+      SELECT COALESCE(SUM(r.exp), 0) AS value FROM ${rewardEventsTable} r
+      JOIN users u ON u.id = r.user_id WHERE u.role != 'admin'
+    `).get().value;
+  }
   return {
     course,
     themeCount: courseThemes.length,
@@ -1836,7 +2004,11 @@ function adminCourseOverview(course) {
     masteredWords: learning.masteredWords || 0,
     reviewCount,
     accuracy: learning.answerCount ? Math.round((learning.correctCount / learning.answerCount) * 100) : 0,
-    lastStudiedAt: learning.lastStudiedAt || ""
+    lastStudiedAt: learning.lastStudiedAt || "",
+    emeralds: emeralds || 0,
+    range,
+    themes: adminThemeOverview(course),
+    topUsers: adminCourseRanking(course, range)
   };
 }
 
@@ -2151,6 +2323,7 @@ app.post("/api/auth/register", limitRegisterIp, limitRegisterPhone, (req, res) =
   const userId = tx();
   return establishSession(req, userId, (error) => {
     if (error) return res.status(500).json({ error: "注册成功，但登录会话创建失败，请重新登录" });
+    recordSuccessfulLogin(userId);
     return res.json({ ok: true, user: publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(userId)) });
   });
 });
@@ -2175,10 +2348,10 @@ app.post("/api/auth/login", limitLoginIp, limitLoginPhone, (req, res) => {
   if (!user || !passwordMatches) {
     return res.status(401).json({ error: "账号或密码不正确" });
   }
-  db.prepare("UPDATE users SET last_login_at = ? WHERE id = ?").run(now(), user.id);
   if (isValidPhone(phone)) loginPhoneCounter.reset(`login-phone:${limiterHash(phone)}`);
   return establishSession(req, user.id, (error) => {
     if (error) return res.status(500).json({ error: "登录会话创建失败，请重试" });
+    recordSuccessfulLogin(user.id);
     return res.json({ ok: true, user: publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(user.id)) });
   });
 });
@@ -2436,6 +2609,403 @@ app.get("/api/friends/challenge", requireAuth, (req, res) => {
   return res.json({ weekKey: range.weekKey, challenges, badges });
 });
 
+function dashboardCourseStats(course, dateKey) {
+  const tables = primaryCourseTables(course);
+  const range = dateKeyRange(dateKey);
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) AS learningUsers,
+      SUM(CASE WHEN s.read_count > 0 THEN 1 ELSE 0 END) AS readUsers,
+      SUM(CASE WHEN s.answer_count > 0 THEN 1 ELSE 0 END) AS quizUsers,
+      COALESCE(SUM(s.read_count), 0) AS reads,
+      COALESCE(SUM(s.answer_count), 0) AS answers,
+      COALESCE(SUM(s.correct_count), 0) AS correct
+    FROM ${tables.sessions} s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.study_date = ? AND u.role != 'admin'
+  `).get(dateKey);
+  const emeralds = db.prepare(`
+    SELECT COALESCE(SUM(r.exp), 0) AS value
+    FROM ${tables.rewards} r
+    JOIN users u ON u.id = r.user_id
+    WHERE r.created_at >= ? AND r.created_at < ? AND u.role != 'admin'
+  `).get(range.start, range.end).value;
+  return {
+    learningUsers: row.learningUsers || 0,
+    readUsers: row.readUsers || 0,
+    quizUsers: row.quizUsers || 0,
+    reads: row.reads || 0,
+    answers: row.answers || 0,
+    correct: row.correct || 0,
+    accuracy: row.answers ? Math.round((row.correct / row.answers) * 100) : 0,
+    emeralds: emeralds || 0
+  };
+}
+
+function dashboardOverallStats(dateKey) {
+  const range = dateKeyRange(dateKey);
+  const activity = db.prepare(`
+    WITH combined AS (
+      SELECT user_id, read_count, answer_count, correct_count FROM study_sessions WHERE study_date = ?
+      UNION ALL
+      SELECT user_id, read_count, answer_count, correct_count FROM chinese_study_sessions WHERE study_date = ?
+    ), per_user AS (
+      SELECT user_id, SUM(read_count) AS reads, SUM(answer_count) AS answers, SUM(correct_count) AS correct
+      FROM combined GROUP BY user_id
+    )
+    SELECT
+      COUNT(*) AS learningUsers,
+      SUM(CASE WHEN p.reads > 0 THEN 1 ELSE 0 END) AS readUsers,
+      SUM(CASE WHEN p.answers > 0 THEN 1 ELSE 0 END) AS quizUsers,
+      COALESCE(SUM(p.reads), 0) AS reads,
+      COALESCE(SUM(p.answers), 0) AS answers,
+      COALESCE(SUM(p.correct), 0) AS correct
+    FROM per_user p JOIN users u ON u.id = p.user_id
+    WHERE u.role != 'admin'
+  `).get(dateKey, dateKey);
+  const login = db.prepare(`
+    SELECT COUNT(*) AS users, COALESCE(SUM(l.login_count), 0) AS count
+    FROM user_login_days l JOIN users u ON u.id = l.user_id
+    WHERE l.login_date = ? AND u.role != 'admin'
+  `).get(dateKey);
+  const loggedOnlyUsers = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM user_login_days l JOIN users u ON u.id = l.user_id
+    WHERE l.login_date = ? AND u.role != 'admin'
+      AND NOT EXISTS (SELECT 1 FROM study_sessions s WHERE s.user_id = l.user_id AND s.study_date = ?)
+      AND NOT EXISTS (SELECT 1 FROM chinese_study_sessions s WHERE s.user_id = l.user_id AND s.study_date = ?)
+  `).get(dateKey, dateKey, dateKey).count;
+  const emeralds = db.prepare(`
+    SELECT COALESCE(SUM(exp), 0) AS value FROM (
+      SELECT r.exp FROM reward_events r JOIN users u ON u.id = r.user_id
+      WHERE r.created_at >= ? AND r.created_at < ? AND u.role != 'admin'
+      UNION ALL
+      SELECT r.exp FROM chinese_reward_events r JOIN users u ON u.id = r.user_id
+      WHERE r.created_at >= ? AND r.created_at < ? AND u.role != 'admin'
+    )
+  `).get(range.start, range.end, range.start, range.end).value;
+  return {
+    loginUsers: login.users || 0,
+    loginCount: login.count || 0,
+    learningUsers: activity.learningUsers || 0,
+    readUsers: activity.readUsers || 0,
+    quizUsers: activity.quizUsers || 0,
+    loggedOnlyUsers: loggedOnlyUsers || 0,
+    reads: activity.reads || 0,
+    answers: activity.answers || 0,
+    correct: activity.correct || 0,
+    accuracy: activity.answers ? Math.round((activity.correct / activity.answers) * 100) : 0,
+    emeralds: emeralds || 0
+  };
+}
+
+function dashboardHistoryCourse(course) {
+  const tables = primaryCourseTables(course);
+  const progressKey = course === "chinese" ? "item_id" : "word";
+  const session = db.prepare(`
+    SELECT COUNT(DISTINCT s.user_id) AS learningUsers,
+           COUNT(*) AS studyDays,
+           COALESCE(SUM(s.read_count), 0) AS reads,
+           COALESCE(SUM(s.answer_count), 0) AS answers,
+           COALESCE(SUM(s.correct_count), 0) AS correct
+    FROM ${tables.sessions} s JOIN users u ON u.id = s.user_id WHERE u.role != 'admin'
+  `).get();
+  const masteredWords = db.prepare(`
+    SELECT COUNT(${progressKey}) AS count FROM ${tables.progress} p
+    JOIN users u ON u.id = p.user_id
+    WHERE p.mastery_status = 'mastered' AND u.role != 'admin'
+  `).get().count;
+  const reviewTable = course === "chinese" ? "chinese_review_queue" : "review_queue";
+  const rewardSummaryTable = course === "chinese" ? "chinese_user_rewards" : "user_rewards";
+  const activeReviews = db.prepare(`
+    SELECT COUNT(*) AS count FROM ${reviewTable} q JOIN users u ON u.id = q.user_id
+    WHERE q.status = 'active' AND u.role != 'admin'
+  `).get().count;
+  const fixedReviews = db.prepare(`
+    SELECT COALESCE(SUM(r.fixed_reviews), 0) AS count FROM ${rewardSummaryTable} r
+    JOIN users u ON u.id = r.user_id WHERE u.role != 'admin'
+  `).get().count;
+  const emeralds = db.prepare(`
+    SELECT COALESCE(SUM(r.exp), 0) AS value FROM ${tables.rewards} r
+    JOIN users u ON u.id = r.user_id WHERE u.role != 'admin'
+  `).get().value;
+  return {
+    learningUsers: session.learningUsers || 0,
+    studyDays: session.studyDays || 0,
+    reads: session.reads || 0,
+    answers: session.answers || 0,
+    correct: session.correct || 0,
+    accuracy: session.answers ? Math.round((session.correct / session.answers) * 100) : 0,
+    masteredWords: masteredWords || 0,
+    activeReviews: activeReviews || 0,
+    fixedReviews: fixedReviews || 0,
+    emeralds: emeralds || 0
+  };
+}
+
+function loginTrackingStartDate() {
+  const row = db.prepare("SELECT applied_at FROM schema_migrations WHERE version = ?")
+    .get("2026-08-10-admin-dashboard-v1");
+  return row?.applied_at ? shanghaiDateKey(new Date(row.applied_at)) : shanghaiDateKey();
+}
+
+function dashboardHistory() {
+  const users = db.prepare(`
+    SELECT COUNT(*) AS totalUsers,
+           SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS activeUsers,
+           SUM(CASE WHEN status = 'disabled' THEN 1 ELSE 0 END) AS disabledUsers
+    FROM users WHERE role != 'admin'
+  `).get();
+  const learningUsers = db.prepare(`
+    SELECT COUNT(*) AS count FROM (
+      SELECT user_id FROM study_sessions
+      UNION
+      SELECT user_id FROM chinese_study_sessions
+    ) x JOIN users u ON u.id = x.user_id WHERE u.role != 'admin'
+  `).get().count;
+  const studyDays = db.prepare(`
+    SELECT COUNT(*) AS count FROM (
+      SELECT user_id, study_date FROM study_sessions
+      UNION
+      SELECT user_id, study_date FROM chinese_study_sessions
+    ) x JOIN users u ON u.id = x.user_id WHERE u.role != 'admin'
+  `).get().count;
+  const english = dashboardHistoryCourse("english");
+  const chinese = dashboardHistoryCourse("chinese");
+  const login = db.prepare(`
+    SELECT COUNT(DISTINCT l.user_id) AS users, COALESCE(SUM(l.login_count), 0) AS count
+    FROM user_login_days l JOIN users u ON u.id = l.user_id WHERE u.role != 'admin'
+  `).get();
+  const whitelist = db.prepare(`
+    SELECT COUNT(*) AS total,
+           SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) AS used,
+           SUM(CASE WHEN status = 'unused' THEN 1 ELSE 0 END) AS unused,
+           SUM(CASE WHEN status = 'disabled' THEN 1 ELSE 0 END) AS disabled
+    FROM phone_whitelist
+  `).get();
+  const applications = db.prepare(`
+    SELECT COUNT(*) AS total,
+           SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved
+    FROM registration_applications
+  `).get();
+  const invitationRecords = (whitelist.total || 0) + (applications.total || 0);
+  const completedInvitations = (whitelist.used || 0) + (applications.approved || 0);
+  const social = {
+    friendships: db.prepare("SELECT COUNT(*) AS count FROM friendships").get().count,
+    completedChallenges: db.prepare("SELECT COUNT(*) AS count FROM friend_weekly_challenges WHERE status = 'completed'").get().count
+  };
+  return {
+    loginTrackingStartedAt: loginTrackingStartDate(),
+    overall: {
+      totalUsers: users.totalUsers || 0,
+      activeUsers: users.activeUsers || 0,
+      disabledUsers: users.disabledUsers || 0,
+      learningUsers: learningUsers || 0,
+      neverLearnedUsers: Math.max(0, (users.totalUsers || 0) - (learningUsers || 0)),
+      studyDays: studyDays || 0,
+      reads: english.reads + chinese.reads,
+      answers: english.answers + chinese.answers,
+      correct: english.correct + chinese.correct,
+      accuracy: english.answers + chinese.answers
+        ? Math.round(((english.correct + chinese.correct) / (english.answers + chinese.answers)) * 100)
+        : 0,
+      masteredWords: english.masteredWords + chinese.masteredWords,
+      activeReviews: english.activeReviews + chinese.activeReviews,
+      fixedReviews: english.fixedReviews + chinese.fixedReviews,
+      emeralds: english.emeralds + chinese.emeralds,
+      loginUsers: login.users || 0,
+      loginCount: login.count || 0
+    },
+    courses: { english, chinese },
+    invitations: {
+      total: invitationRecords,
+      completed: completedInvitations,
+      conversion: invitationRecords ? Math.round((completedInvitations / invitationRecords) * 100) : 0,
+      whitelist: {
+        total: whitelist.total || 0,
+        used: whitelist.used || 0,
+        unused: whitelist.unused || 0,
+        disabled: whitelist.disabled || 0
+      },
+      referralApplications: {
+        total: applications.total || 0,
+        approved: applications.approved || 0
+      }
+    },
+    social
+  };
+}
+
+function dashboardTodo() {
+  const timestamp = now();
+  const inThreeDays = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+  return {
+    pendingApplications: db.prepare("SELECT COUNT(*) AS count FROM registration_applications WHERE status = 'pending'").get().count,
+    passwordResetRequired: db.prepare("SELECT COUNT(*) AS count FROM users WHERE role != 'admin' AND status = 'active' AND password_reset_required = 1").get().count,
+    expiringSoon: db.prepare(`
+      SELECT COUNT(*) AS count FROM users
+      WHERE role != 'admin' AND status = 'active' AND access_tier = 'free_trial'
+        AND trial_expires_at > ? AND trial_expires_at <= ?
+    `).get(timestamp, inThreeDays).count,
+    expiredEnabled: db.prepare(`
+      SELECT COUNT(*) AS count FROM users
+      WHERE role != 'admin' AND status = 'active' AND access_tier = 'free_trial'
+        AND (trial_expires_at IS NULL OR trial_expires_at <= ?)
+    `).get(timestamp).count,
+    unusedWhitelist: db.prepare("SELECT COUNT(*) AS count FROM phone_whitelist WHERE status = 'unused'").get().count,
+    disabledWhitelist: db.prepare("SELECT COUNT(*) AS count FROM phone_whitelist WHERE status = 'disabled'").get().count
+  };
+}
+
+app.get("/api/admin/dashboard", requireAdmin, (req, res) => {
+  const date = adminDashboardDate(req.query.date);
+  if (!date) return res.status(400).json({ error: "日期只能选择今天及之前近30天" });
+  const trend = [];
+  for (let offset = -6; offset <= 0; offset += 1) {
+    const trendDate = shiftDateKey(date, offset);
+    trend.push({ date: trendDate, ...dashboardOverallStats(trendDate) });
+  }
+  return res.json({
+    date,
+    generatedAt: now(),
+    loginTrackingStartedAt: loginTrackingStartDate(),
+    summary: dashboardOverallStats(date),
+    courses: {
+      english: dashboardCourseStats("english", date),
+      chinese: dashboardCourseStats("chinese", date)
+    },
+    trend,
+    todo: dashboardTodo()
+  });
+});
+
+app.get("/api/admin/dashboard/history", requireAdmin, (req, res) => {
+  return res.json({ generatedAt: now(), ...dashboardHistory() });
+});
+
+app.get("/api/admin/dashboard/active-users", requireAdmin, (req, res) => {
+  const date = adminDashboardDate(req.query.date);
+  if (!date) return res.status(400).json({ error: "日期只能选择今天及之前近30天" });
+  const layer = ["login", "learn", "read", "quiz", "login_only"].includes(req.query.layer)
+    ? req.query.layer
+    : "learn";
+  const course = ["english", "chinese"].includes(req.query.course) ? req.query.course : "all";
+  const pageSize = Math.min(50, positiveInt(req.query.pageSize, 10));
+  const page = positiveInt(req.query.page, 1);
+  const phone = normalizePhone(req.query.phone);
+  const needsAllActivity = course === "all" || layer === "login" || layer === "login_only";
+  const activityRows = needsAllActivity
+    ? `
+      SELECT user_id, read_count AS english_reads, answer_count AS english_answers,
+             correct_count AS english_correct, 0 AS chinese_reads, 0 AS chinese_answers,
+             0 AS chinese_correct, updated_at
+      FROM study_sessions WHERE study_date = ?
+      UNION ALL
+      SELECT user_id, 0, 0, 0, read_count, answer_count, correct_count, updated_at
+      FROM chinese_study_sessions WHERE study_date = ?`
+    : course === "chinese"
+      ? `SELECT user_id, 0 AS english_reads, 0 AS english_answers, 0 AS english_correct,
+                read_count AS chinese_reads, answer_count AS chinese_answers,
+                correct_count AS chinese_correct, updated_at
+         FROM chinese_study_sessions WHERE study_date = ?`
+      : `SELECT user_id, read_count AS english_reads, answer_count AS english_answers,
+                correct_count AS english_correct, 0 AS chinese_reads, 0 AS chinese_answers,
+                0 AS chinese_correct, updated_at
+         FROM study_sessions WHERE study_date = ?`;
+  const cte = `
+    WITH activity_rows AS (${activityRows}), activity AS (
+      SELECT user_id,
+             SUM(english_reads) AS englishReads, SUM(english_answers) AS englishAnswers,
+             SUM(english_correct) AS englishCorrect, SUM(chinese_reads) AS chineseReads,
+             SUM(chinese_answers) AS chineseAnswers, SUM(chinese_correct) AS chineseCorrect,
+             MAX(updated_at) AS lastActivityAt
+      FROM activity_rows GROUP BY user_id
+    ), logins AS (
+      SELECT user_id, login_count AS loginCount, last_login_at AS loginAt
+      FROM user_login_days WHERE login_date = ?
+    )`;
+  const cteValues = needsAllActivity ? [date, date, date] : [date, date];
+  const filters = ["u.role != 'admin'"];
+  const values = [];
+  if (phone) {
+    filters.push("u.phone LIKE ?");
+    values.push(`%${phone}%`);
+  }
+  if ((layer === "login" || layer === "login_only") && course !== "all") {
+    filters.push("u.primary_course = ?");
+    values.push(course);
+  }
+  if (layer === "login") filters.push("COALESCE(l.loginCount, 0) > 0");
+  if (layer === "learn") filters.push("COALESCE(a.englishReads + a.englishAnswers + a.chineseReads + a.chineseAnswers, 0) > 0");
+  if (layer === "read") filters.push("COALESCE(a.englishReads + a.chineseReads, 0) > 0");
+  if (layer === "quiz") filters.push("COALESCE(a.englishAnswers + a.chineseAnswers, 0) > 0");
+  if (layer === "login_only") {
+    filters.push("COALESCE(l.loginCount, 0) > 0");
+    filters.push("COALESCE(a.englishReads + a.englishAnswers + a.chineseReads + a.chineseAnswers, 0) = 0");
+  }
+  const where = `WHERE ${filters.join(" AND ")}`;
+  const total = db.prepare(`${cte}
+    SELECT COUNT(*) AS count FROM users u
+    LEFT JOIN activity a ON a.user_id = u.id LEFT JOIN logins l ON l.user_id = u.id ${where}
+  `).get(...cteValues, ...values).count;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const rows = db.prepare(`${cte}
+    SELECT u.id, u.phone, u.username, u.social_name AS socialName, u.status,
+           u.access_tier AS accessTier, u.trial_expires_at AS trialExpiresAt,
+           u.primary_course AS primaryCourse, u.last_login_at AS lastLoginAt,
+           COALESCE(l.loginCount, 0) AS loginCount, l.loginAt,
+           COALESCE(a.englishReads, 0) AS englishReads,
+           COALESCE(a.englishAnswers, 0) AS englishAnswers,
+           COALESCE(a.englishCorrect, 0) AS englishCorrect,
+           COALESCE(a.chineseReads, 0) AS chineseReads,
+           COALESCE(a.chineseAnswers, 0) AS chineseAnswers,
+           COALESCE(a.chineseCorrect, 0) AS chineseCorrect,
+           a.lastActivityAt
+    FROM users u LEFT JOIN activity a ON a.user_id = u.id LEFT JOIN logins l ON l.user_id = u.id
+    ${where}
+    ORDER BY COALESCE(a.lastActivityAt, l.loginAt, u.last_login_at) DESC, u.id DESC
+    LIMIT ? OFFSET ?
+  `).all(...cteValues, ...values, pageSize, (safePage - 1) * pageSize);
+  return res.json({ items: rows, date, layer, course, page: safePage, pageSize, total, totalPages });
+});
+
+app.get("/api/admin/social-summary", requireAdmin, (req, res) => {
+  const range = weekRange();
+  const summary = {
+    activeLinks: db.prepare("SELECT COUNT(*) AS count FROM referral_links WHERE active = 1").get().count,
+    approvedReferrals: db.prepare("SELECT COUNT(*) AS count FROM referrals").get().count,
+    friendships: db.prepare("SELECT COUNT(*) AS count FROM friendships").get().count,
+    completedChallenges: db.prepare("SELECT COUNT(*) AS count FROM friend_weekly_challenges WHERE status = 'completed'").get().count,
+    weeklyChallenges: db.prepare("SELECT COUNT(*) AS count FROM friend_weekly_challenges WHERE week_key = ?").get(range.weekKey).count,
+    weeklyCompleted: db.prepare("SELECT COUNT(*) AS count FROM friend_weekly_challenges WHERE week_key = ? AND status = 'completed'").get(range.weekKey).count
+  };
+  const topInviters = db.prepare(`
+    SELECT u.id, u.phone, u.social_name AS socialName, COUNT(r.id) AS invitedCount
+    FROM referrals r JOIN users u ON u.id = r.inviter_user_id
+    GROUP BY u.id ORDER BY invitedCount DESC, u.id ASC LIMIT 10
+  `).all();
+  const recentFriendships = db.prepare(`
+    SELECT f.id, f.primary_course AS primaryCourse, f.created_at AS createdAt,
+           low.social_name AS firstName, high.social_name AS secondName
+    FROM friendships f
+    JOIN users low ON low.id = f.user_low_id JOIN users high ON high.id = f.user_high_id
+    ORDER BY f.created_at DESC LIMIT 20
+  `).all();
+  const trend = [];
+  const today = shanghaiDateKey();
+  for (let offset = -6; offset <= 0; offset += 1) {
+    const date = shiftDateKey(today, offset);
+    const day = dateKeyRange(date);
+    trend.push({
+      date,
+      friendships: db.prepare("SELECT COUNT(*) AS count FROM friendships WHERE created_at >= ? AND created_at < ?")
+        .get(day.start, day.end).count
+    });
+  }
+  return res.json({ weekKey: range.weekKey, summary, topInviters, recentFriendships, trend });
+});
+
 app.get("/api/admin/whitelist", requireAdmin, (req, res) => {
   const pageSize = Math.min(50, positiveInt(req.query.pageSize, 10));
   const page = positiveInt(req.query.page, 1);
@@ -2502,7 +3072,8 @@ app.patch("/api/admin/whitelist/:id", requireAdmin, (req, res) => {
 
 app.get("/api/admin/course-summary", requireAdmin, (req, res) => {
   const course = req.query.course === "chinese" ? "chinese" : "english";
-  return res.json(adminCourseOverview(course));
+  const range = ["today", "7d", "history"].includes(req.query.range) ? req.query.range : "history";
+  return res.json(adminCourseOverview(course, range));
 });
 
 app.get("/api/admin/users", requireAdmin, (req, res) => {
@@ -2519,6 +3090,10 @@ app.get("/api/admin/users", requireAdmin, (req, res) => {
     filters.push("primary_course = ?");
     values.push(req.query.primaryCourse);
   }
+  if (["active", "disabled"].includes(req.query.status)) {
+    filters.push("status = ?");
+    values.push(req.query.status);
+  }
   if (["free_trial", "founder_trial"].includes(req.query.accessTier)) {
     filters.push("access_tier = ?");
     values.push(req.query.accessTier);
@@ -2531,6 +3106,31 @@ app.get("/api/admin/users", requireAdmin, (req, res) => {
   if (req.query.accessState === "expired") {
     filters.push("access_tier = 'free_trial' AND (trial_expires_at IS NULL OR trial_expires_at <= ?)");
     values.push(now());
+  }
+  const activityStatus = ["active_today", "login_today", "never", "inactive_30"].includes(req.query.activityStatus)
+    ? req.query.activityStatus
+    : "";
+  const today = shanghaiDateKey();
+  if (activityStatus === "active_today") {
+    filters.push(`(
+      EXISTS (SELECT 1 FROM study_sessions s WHERE s.user_id = users.id AND s.study_date = ?)
+      OR EXISTS (SELECT 1 FROM chinese_study_sessions s WHERE s.user_id = users.id AND s.study_date = ?)
+    )`);
+    values.push(today, today);
+  }
+  if (activityStatus === "login_today") {
+    filters.push("EXISTS (SELECT 1 FROM user_login_days l WHERE l.user_id = users.id AND l.login_date = ?)");
+    values.push(today);
+  }
+  if (activityStatus === "never") {
+    filters.push("NOT EXISTS (SELECT 1 FROM study_sessions s WHERE s.user_id = users.id)");
+    filters.push("NOT EXISTS (SELECT 1 FROM chinese_study_sessions s WHERE s.user_id = users.id)");
+  }
+  if (activityStatus === "inactive_30") {
+    const cutoff = shiftDateKey(today, -29);
+    filters.push("NOT EXISTS (SELECT 1 FROM study_sessions s WHERE s.user_id = users.id AND s.study_date >= ?)");
+    filters.push("NOT EXISTS (SELECT 1 FROM chinese_study_sessions s WHERE s.user_id = users.id AND s.study_date >= ?)");
+    values.push(cutoff, cutoff);
   }
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
   const total = db.prepare(`SELECT COUNT(*) AS count FROM users ${where}`).get(...values).count;
@@ -2550,7 +3150,16 @@ app.get("/api/admin/users", requireAdmin, (req, res) => {
   const items = users.map((user) => ({
     ...user,
     accessState: userAccessState(user),
-    progress: course === "chinese" ? chineseProgressSummary(user.id).totals : progressSummary(user.id).totals
+    progress: course === "chinese" ? chineseProgressSummary(user.id).totals : progressSummary(user.id).totals,
+    todayActivity: db.prepare(`
+      SELECT
+        COALESCE((SELECT read_count FROM study_sessions WHERE user_id = ? AND study_date = ?), 0)
+          + COALESCE((SELECT read_count FROM chinese_study_sessions WHERE user_id = ? AND study_date = ?), 0) AS reads,
+        COALESCE((SELECT answer_count FROM study_sessions WHERE user_id = ? AND study_date = ?), 0)
+          + COALESCE((SELECT answer_count FROM chinese_study_sessions WHERE user_id = ? AND study_date = ?), 0) AS answers,
+        COALESCE((SELECT correct_count FROM study_sessions WHERE user_id = ? AND study_date = ?), 0)
+          + COALESCE((SELECT correct_count FROM chinese_study_sessions WHERE user_id = ? AND study_date = ?), 0) AS correct
+    `).get(user.id, today, user.id, today, user.id, today, user.id, today, user.id, today, user.id, today)
   }));
   return res.json({ items, page: safePage, pageSize, total, totalPages, course });
 });
@@ -2574,11 +3183,21 @@ app.get("/api/admin/users/:id/progress", requireAdmin, (req, res) => {
   const rewardLevel = course === "chinese"
     ? chineseLevelInfo(rewardRow.total_exp)
     : levelInfo(rewardRow.total_exp);
+  const cutoff = shiftDateKey(shanghaiDateKey(), -29);
+  const sessionTable = course === "chinese" ? "chinese_study_sessions" : "study_sessions";
+  const recentDays = db.prepare(`
+    SELECT study_date AS date, read_count AS reads, answer_count AS answers,
+           correct_count AS correct
+    FROM ${sessionTable}
+    WHERE user_id = ? AND study_date >= ?
+    ORDER BY study_date DESC
+  `).all(id, cutoff);
 
   return res.json({
     course,
     user,
     progress,
+    recentDays,
     reward: {
       ...rewardLevel,
       currencyKey: "emerald",

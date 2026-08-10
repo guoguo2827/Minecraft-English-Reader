@@ -4,93 +4,100 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>管理后台 - Minecraft Reader</title>
-  <link rel="stylesheet" href="/portal.css">
+  <link rel="stylesheet" href="portal.css">
 </head>
-<body>
-  <main class="shell">
-    <section class="panel wide admin-panel">
-      <div class="top admin-top">
-        <div>
-          <h1>管理后台</h1>
-          <p id="adminLine">公共账号管理与课程学习统计</p>
-        </div>
-        <div class="actions">
-          <a href="/">英文学习</a>
-          <a href="/chinese">中文学习</a>
-        </div>
-      </div>
-
-      <nav class="course-switch admin-course-tabs" aria-label="统计课程">
-        <button type="button" data-course="english">英文点读课程</button>
-        <button type="button" data-course="chinese">中文点读课程</button>
+<body class="admin-body">
+  <main class="admin-layout">
+    <aside class="admin-sidebar" aria-label="管理项目">
+      <div class="admin-brand"><strong>Minecraft Reader</strong><span>管理后台</span></div>
+      <nav class="admin-nav">
+        <button type="button" data-admin-view="overview">数据总览 <b id="overviewBadge"></b></button>
+        <button type="button" data-admin-view="users">用户与权益</button>
+        <button type="button" data-admin-view="courses">课程与学习</button>
+        <button type="button" data-admin-view="access">邀请与准入 <b id="accessBadge"></b></button>
+        <button type="button" data-admin-view="social">好友运营</button>
+        <button type="button" data-admin-view="security">安全与日志</button>
       </nav>
+      <div class="admin-sidebar-links"><a href="/">英文学习</a><a href="/chinese">中文学习</a></div>
+    </aside>
 
-      <section class="admin-section" aria-labelledby="courseHeading">
+    <section class="admin-workspace">
+      <header class="admin-workspace-top">
+        <div><p class="section-kicker">运营管理</p><h1 id="viewTitle">数据总览</h1></div>
+        <p class="message admin-global-message" id="message" role="status" aria-live="polite"></p>
+      </header>
+
+      <section class="admin-view" data-admin-panel="overview">
         <div class="section-heading">
-          <div>
-            <p class="section-kicker">课程数据</p>
-            <h2 id="courseHeading">英文点读课程概览</h2>
-          </div>
-          <span class="course-badge" id="courseBadge">English</span>
+          <div><p class="section-kicker">当天活跃</p><h2>用户活跃看板</h2></div>
+          <div class="actions"><label class="compact-field">统计日期<input id="dashboardDate" type="date"></label><button class="secondary" id="refreshDashboardBtn" type="button">刷新数据</button></div>
         </div>
-        <div class="admin-summary-grid" id="courseSummary" aria-live="polite"></div>
+        <div class="admin-summary-grid dashboard-summary" id="dailySummary" aria-live="polite"></div>
+        <div class="course-compare" id="dailyCourses"></div>
 
-        <div class="section-heading user-heading">
-          <div>
-            <p class="section-kicker">按用户查看</p>
-            <h2 id="usersHeading">英文课程用户进度</h2>
-          </div>
+        <div class="section-heading dashboard-heading"><div><p class="section-kicker">全部历史</p><h2>历史累计数据</h2></div><span class="shared-badge" id="historyGeneratedAt">正在加载</span></div>
+        <div class="admin-summary-grid history-summary" id="historySummary"></div>
+        <div class="course-compare" id="historyCourses"></div>
+
+        <div class="dashboard-two-column">
+          <section class="dashboard-block"><div class="section-heading"><div><p class="section-kicker">近期变化</p><h3>近7天趋势</h3></div></div><div id="trendList" class="trend-list"></div></section>
+          <section class="dashboard-block"><div class="section-heading"><div><p class="section-kicker">需要处理</p><h3>后台待办</h3></div></div><div id="todoList" class="todo-grid"></div></section>
         </div>
+
+        <div class="section-heading dashboard-heading"><div><p class="section-kicker">按用户查看</p><h2 id="activeUsersHeading">当天学习用户</h2></div></div>
         <div class="toolbar">
-          <label>按手机号搜索<input id="userPhoneSearch" inputmode="numeric" autocomplete="off" maxlength="11" placeholder="输入手机号或部分号码"></label>
+          <label>行为层级<select id="activeLayer"><option value="learn">真实学习</option><option value="login">成功登录</option><option value="read">点读</option><option value="quiz">答题</option><option value="login_only">仅登录未学习</option></select></label>
+          <label>课程<select id="activeCourse"><option value="all">全部课程</option><option value="english">英文</option><option value="chinese">中文</option></select></label>
+          <label>手机号<input id="activePhone" inputmode="numeric" maxlength="11" placeholder="输入完整或部分号码"></label>
+          <button class="secondary" id="activeSearchBtn" type="button">筛选</button>
+        </div>
+        <div class="list" id="activeUsers"></div>
+        <div class="pager"><button class="secondary" id="prevActiveBtn" type="button">上一页</button><span id="activePageInfo">第 1 页</span><button class="secondary" id="nextActiveBtn" type="button">下一页</button></div>
+      </section>
+
+      <section class="admin-view" data-admin-panel="users" hidden>
+        <div class="section-heading"><div><p class="section-kicker">账号管理</p><h2>用户与权益</h2></div></div>
+        <div class="toolbar">
+          <label>手机号<input id="userPhoneSearch" inputmode="numeric" maxlength="11" placeholder="手机号或部分号码"></label>
+          <label>账号状态<select id="userStatusFilter"><option value="">全部</option><option value="active">正常</option><option value="disabled">已禁用</option></select></label>
           <label>用户类型<select id="userAccessFilter"><option value="">全部</option><option value="founder_trial">创始体验</option><option value="free_trial">免费体验</option><option value="expired">已到期</option></select></label>
           <label>主课程<select id="userPrimaryFilter"><option value="">全部</option><option value="english">英文</option><option value="chinese">中文</option></select></label>
+          <label>活跃状态<select id="userActivityFilter"><option value="">全部</option><option value="active_today">今日学习</option><option value="login_today">今日登录</option><option value="never">从未学习</option><option value="inactive_30">近30天未学习</option></select></label>
           <button class="secondary" id="userSearchBtn" type="button">搜索</button>
         </div>
         <div class="list" id="users"></div>
-        <div class="pager">
-          <button class="secondary" id="prevUsersBtn" type="button">上一页</button>
-          <span id="usersPageInfo">第 1 页</span>
-          <button class="secondary" id="nextUsersBtn" type="button">下一页</button>
-        </div>
+        <div class="pager"><button class="secondary" id="prevUsersBtn" type="button">上一页</button><span id="usersPageInfo">第 1 页</span><button class="secondary" id="nextUsersBtn" type="button">下一页</button></div>
       </section>
 
-      <section class="admin-section shared-admin" aria-labelledby="sharedHeading">
-        <div class="section-heading">
-          <div>
-            <p class="section-kicker">两门课程共用</p>
-            <h2 id="sharedHeading">公共账号与邀请管理</h2>
-          </div>
-          <span class="shared-badge">账号共用 · 进度隔离</span>
+      <section class="admin-view" data-admin-panel="courses" hidden>
+        <div class="section-heading"><div><p class="section-kicker">课程运营</p><h2>课程与学习</h2></div></div>
+        <div class="admin-control-row">
+          <div class="course-switch"><button type="button" data-course="english">英文点读</button><button type="button" data-course="chinese">中文点读</button></div>
+          <div class="course-switch range-switch"><button type="button" data-course-range="today">今日</button><button type="button" data-course-range="7d">近7天</button><button type="button" data-course-range="history">历史累计</button></div>
         </div>
-
-        <h3>新增手机白名单</h3>
-        <form id="whitelistForm" class="whitelist-form">
-          <label>手机号<input name="phone" inputmode="numeric" autocomplete="off" maxlength="11" pattern="1[3-9][0-9]{9}" placeholder="请输入11位手机号" required></label>
-          <label>备注<input name="note" placeholder="好友姓名或来源"></label>
-          <label>主课程<select name="primaryCourse"><option value="english">英文点读</option><option value="chinese">中文点读</option></select></label>
-          <button type="submit">生成邀请码</button>
-        </form>
-        <p class="message" id="message"></p>
-
-        <h3>白名单与邀请码</h3>
-        <div class="list" id="whitelist"></div>
-        <div class="pager">
-          <button class="secondary" id="prevWhitelistBtn" type="button">上一页</button>
-          <span id="whitelistPageInfo">第 1 页</span>
-          <button class="secondary" id="nextWhitelistBtn" type="button">下一页</button>
-        </div>
+        <div class="admin-summary-grid" id="courseSummary"></div>
+        <div class="theme-operations" id="courseThemes"></div>
+        <section class="admin-subsection"><h3>课程学习排行</h3><p class="muted">用于了解学习情况，不在这里修改账号。</p><div class="list" id="courseUsers"></div></section>
       </section>
 
-      <section class="admin-section" aria-labelledby="applicationsHeading">
-        <div class="section-heading"><div><p class="section-kicker">公开体验</p><h2 id="applicationsHeading">待审核注册申请</h2></div></div>
-        <div class="list" id="applications"></div>
-        <div class="pager"><button class="secondary" id="prevApplicationsBtn" type="button">上一页</button><span id="applicationsPageInfo">第 1 页</span><button class="secondary" id="nextApplicationsBtn" type="button">下一页</button></div>
+      <section class="admin-view" data-admin-panel="access" hidden>
+        <div class="section-heading"><div><p class="section-kicker">账号准入</p><h2>邀请与准入</h2></div></div>
+        <div class="admin-summary-grid compact-summary" id="accessSummary"></div>
+        <section class="admin-subsection"><h3>新增手机白名单</h3><form id="whitelistForm" class="whitelist-form"><label>手机号<input name="phone" inputmode="numeric" maxlength="11" pattern="1[3-9][0-9]{9}" placeholder="请输入11位手机号" required></label><label>备注<input name="note" placeholder="好友姓名或来源"></label><label>主课程<select name="primaryCourse"><option value="english">英文点读</option><option value="chinese">中文点读</option></select></label><button type="submit">生成邀请码</button></form></section>
+        <section class="admin-subsection"><h3>白名单与邀请码</h3><div class="list" id="whitelist"></div><div class="pager"><button class="secondary" id="prevWhitelistBtn" type="button">上一页</button><span id="whitelistPageInfo">第 1 页</span><button class="secondary" id="nextWhitelistBtn" type="button">下一页</button></div></section>
+        <section class="admin-subsection"><h3>待审核注册申请</h3><div class="list" id="applications"></div><div class="pager"><button class="secondary" id="prevApplicationsBtn" type="button">上一页</button><span id="applicationsPageInfo">第 1 页</span><button class="secondary" id="nextApplicationsBtn" type="button">下一页</button></div></section>
       </section>
 
-      <section class="admin-section" aria-labelledby="auditHeading">
-        <div class="section-heading"><div><p class="section-kicker">安全追踪</p><h2 id="auditHeading">管理员操作日志</h2></div></div>
-        <div class="toolbar"><label>操作类型<input id="auditAction" placeholder="例如 user.access"></label><button class="secondary" id="auditSearchBtn" type="button">筛选</button></div>
+      <section class="admin-view" data-admin-panel="social" hidden>
+        <div class="section-heading"><div><p class="section-kicker">只读运营</p><h2>好友运营</h2></div><span class="shared-badge">不修改好友关系</span></div>
+        <div class="admin-summary-grid compact-summary" id="socialSummary"></div>
+        <div class="dashboard-two-column"><section class="dashboard-block"><h3>邀请人数排行</h3><div class="list" id="topInviters"></div></section><section class="dashboard-block"><h3>近7天新增好友</h3><div class="trend-list" id="friendTrend"></div></section></div>
+        <section class="admin-subsection"><h3>最近建立的好友关系</h3><div class="list" id="recentFriendships"></div></section>
+      </section>
+
+      <section class="admin-view" data-admin-panel="security" hidden>
+        <div class="section-heading"><div><p class="section-kicker">安全追踪</p><h2>管理员操作日志</h2></div></div>
+        <div class="toolbar"><label>操作类型<input id="auditAction" placeholder="例如 user.password_reset"></label><button class="secondary" id="auditSearchBtn" type="button">筛选</button></div>
         <div class="list audit-list" id="auditLogs"></div>
         <div class="pager"><button class="secondary" id="prevAuditBtn" type="button">上一页</button><span id="auditPageInfo">第 1 页</span><button class="secondary" id="nextAuditBtn" type="button">下一页</button></div>
       </section>
@@ -100,388 +107,174 @@
   <div class="admin-modal" id="userDetailModal" hidden>
     <button class="admin-modal-backdrop" type="button" data-close-detail aria-label="关闭用户明细"></button>
     <section class="admin-modal-content" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
-      <div class="top">
-        <div>
-          <p class="section-kicker" id="detailCourse"></p>
-          <h2 id="detailTitle">用户课程明细</h2>
-        </div>
-        <button class="icon-close" type="button" data-close-detail aria-label="关闭">×</button>
-      </div>
+      <div class="top"><div><p class="section-kicker" id="detailCourse"></p><h2 id="detailTitle">用户课程明细</h2></div><button class="icon-close" type="button" data-close-detail aria-label="关闭">×</button></div>
+      <div class="course-switch detail-course-switch"><button type="button" data-detail-course="english">英文课程</button><button type="button" data-detail-course="chinese">中文课程</button></div>
       <div id="userDetailBody"></div>
     </section>
   </div>
 
   <script>
-    const form = document.querySelector("#whitelistForm");
-    const phoneInput = form.elements.phone;
-    const message = document.querySelector("#message");
-    const prevWhitelistBtn = document.querySelector("#prevWhitelistBtn");
-    const nextWhitelistBtn = document.querySelector("#nextWhitelistBtn");
-    const whitelistPageInfo = document.querySelector("#whitelistPageInfo");
-    const userPhoneSearch = document.querySelector("#userPhoneSearch");
-    const userSearchBtn = document.querySelector("#userSearchBtn");
-    const userAccessFilter = document.querySelector("#userAccessFilter");
-    const userPrimaryFilter = document.querySelector("#userPrimaryFilter");
-    const prevUsersBtn = document.querySelector("#prevUsersBtn");
-    const nextUsersBtn = document.querySelector("#nextUsersBtn");
-    const usersPageInfo = document.querySelector("#usersPageInfo");
-    const userDetailModal = document.querySelector("#userDetailModal");
-    const userDetailBody = document.querySelector("#userDetailBody");
-    const applications = document.querySelector("#applications");
-    const prevApplicationsBtn = document.querySelector("#prevApplicationsBtn");
-    const nextApplicationsBtn = document.querySelector("#nextApplicationsBtn");
-    const applicationsPageInfo = document.querySelector("#applicationsPageInfo");
-    const auditLogs = document.querySelector("#auditLogs");
-    const auditAction = document.querySelector("#auditAction");
-    const auditSearchBtn = document.querySelector("#auditSearchBtn");
-    const prevAuditBtn = document.querySelector("#prevAuditBtn");
-    const nextAuditBtn = document.querySelector("#nextAuditBtn");
-    const auditPageInfo = document.querySelector("#auditPageInfo");
-    const requestedCourse = new URLSearchParams(location.search).get("course");
-    let userCourse = requestedCourse === "chinese" ? "chinese" : "english";
-    let whitelistItems = [];
-    let whitelistPage = 1;
-    let whitelistTotalPages = 1;
-    let userItems = [];
-    let usersPage = 1;
-    let usersTotalPages = 1;
-    let applicationsPage = 1;
-    let applicationsTotalPages = 1;
-    let auditPage = 1;
-    let auditTotalPages = 1;
-    const listPageSize = 10;
-
-    const courseCopy = {
-      english: { heading: "英文点读课程概览", users: "英文课程用户进度", badge: "English", label: "英文课程" },
-      chinese: { heading: "中文点读课程概览", users: "中文课程用户进度", badge: "Chinese", label: "中文课程" }
-    };
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => [...document.querySelectorAll(selector)];
+    const message = $("#message");
+    const pageSize = 10;
+    const viewTitles = { overview: "数据总览", users: "用户与权益", courses: "课程与学习", access: "邀请与准入", social: "好友运营", security: "安全与日志" };
+    let currentView = "overview";
+    let dashboardData = null;
+    let historyData = null;
+    let dashboardUpdatedAt = 0;
+    let activePage = 1, activeTotalPages = 1;
+    let usersPage = 1, usersTotalPages = 1, userItems = [];
+    let whitelistPage = 1, whitelistTotalPages = 1, whitelistItems = [];
+    let applicationsPage = 1, applicationsTotalPages = 1;
+    let auditPage = 1, auditTotalPages = 1;
+    let course = "english", courseRange = "history";
+    let detailUserId = null, detailCourse = "english";
 
     async function api(url, options = {}) {
-      const response = await fetch(url, {
-        ...options,
-        headers: { "Content-Type": "application/json", ...(options.headers || {}) }
-      });
-      if (response.status === 401) {
-        location.href = "/admin-login";
-        throw new Error("请重新登录管理后台");
-      }
+      const response = await fetch(url, { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } });
+      if (response.status === 401) { location.href = "/admin-login"; throw new Error("请重新登录管理后台"); }
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "操作失败");
       return data;
     }
+    function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]); }
+    function formatNumber(value) { return Number(value || 0).toLocaleString("zh-CN"); }
+    function formatDate(value) { if (!value) return "暂无记录"; const date = new Date(value); return Number.isNaN(date.getTime()) ? escapeHtml(value) : date.toLocaleString("zh-CN", { hour12: false }); }
+    function statusText(value) { return { active: "正常", disabled: "已禁用", founder_trial: "创始体验", free_trial: "免费体验", expired: "已到期", unused: "未使用", used: "已使用", pending: "待审核" }[value] || value; }
+    function courseText(value) { return value === "chinese" ? "中文" : "英文"; }
+    function metric(label, value, note = "") { return `<div class="admin-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>${note ? `<small>${escapeHtml(note)}</small>` : ""}</div>`; }
+    function chinaDateKey(date = new Date()) { const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date); const map = Object.fromEntries(parts.map((part) => [part.type, part.value])); return `${map.year}-${map.month}-${map.day}`; }
+    function shiftDateKey(key, days) { const date = new Date(`${key}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); }
+    async function copyText(text) { if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text); const area = document.createElement("textarea"); area.value = text; area.style.position = "fixed"; area.style.opacity = "0"; document.body.appendChild(area); area.select(); document.execCommand("copy"); area.remove(); }
+    function setMessage(text) { message.textContent = text; }
 
-    function escapeHtml(value) {
-      return String(value ?? "").replace(/[&<>'"]/g, (char) => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
-      })[char]);
+    function showView(name, updateHash = true) {
+      currentView = viewTitles[name] ? name : "overview";
+      $$('[data-admin-view]').forEach((button) => button.classList.toggle("active", button.dataset.adminView === currentView));
+      $$('[data-admin-panel]').forEach((panel) => { panel.hidden = panel.dataset.adminPanel !== currentView; });
+      $("#viewTitle").textContent = viewTitles[currentView];
+      if (updateHash) history.replaceState(null, "", `#${currentView}`);
+      loadCurrentView();
+    }
+    async function loadCurrentView() {
+      try {
+        if (currentView === "overview") await loadDashboard();
+        if (currentView === "users") await loadUsers(1);
+        if (currentView === "courses") await loadCourseSummary();
+        if (currentView === "access") await Promise.all([loadWhitelist(), loadApplications(), loadAccessSummary()]);
+        if (currentView === "social") await loadSocial();
+        if (currentView === "security") await loadAuditLogs();
+      } catch (error) { setMessage(error.message); }
     }
 
-    function formatDate(value) {
-      if (!value) return "暂无记录";
-      const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? escapeHtml(value) : date.toLocaleString("zh-CN", { hour12: false });
+    function renderDashboard() {
+      const data = dashboardData, summary = data.summary;
+      $("#dailySummary").innerHTML = [
+        ["登录用户", summary.loginUsers], ["真实学习用户", summary.learningUsers], ["点读用户", summary.readUsers],
+        ["答题用户", summary.quizUsers], ["仅登录未学习", summary.loggedOnlyUsers], ["点读次数", summary.reads],
+        ["答题数", summary.answers], ["正确率", `${summary.accuracy}%`], ["发放绿宝石", summary.emeralds]
+      ].map(([label, value]) => metric(label, formatNumber(value))).join("");
+      $("#dailyCourses").innerHTML = ["english", "chinese"].map((key) => { const item = data.courses[key]; return `<section class="course-data ${key}"><div><span>${key === "english" ? "英文课程" : "中文课程"}</span><strong>${item.learningUsers} 位学习用户</strong></div><p>点读 ${formatNumber(item.reads)} · 答题 ${formatNumber(item.answers)} · 正确率 ${item.accuracy}% · 绿宝石 ${formatNumber(item.emeralds)}</p></section>`; }).join("");
+      const max = Math.max(1, ...data.trend.map((item) => item.learningUsers));
+      $("#trendList").innerHTML = data.trend.map((item) => `<div class="trend-row"><time>${item.date.slice(5)}</time><span class="trend-track"><i style="width:${Math.max(2, item.learningUsers / max * 100)}%"></i></span><b>${item.learningUsers}人</b><small>答题 ${item.answers} · ${item.accuracy}%</small></div>`).join("");
+      const todo = data.todo;
+      $("#todoList").innerHTML = [["待审核申请", todo.pendingApplications, "access"], ["待设置新密码", todo.passwordResetRequired, "users"], ["3天内到期", todo.expiringSoon, "users"], ["已到期仍启用", todo.expiredEnabled, "users"], ["未使用白名单", todo.unusedWhitelist, "access"], ["已禁用白名单", todo.disabledWhitelist, "access"]].map(([label, value, view]) => `<button type="button" data-jump-view="${view}"><span>${label}</span><strong>${value}</strong></button>`).join("");
+      $("#overviewBadge").textContent = todo.pendingApplications + todo.passwordResetRequired || "";
+      $("#accessBadge").textContent = todo.pendingApplications || "";
+    }
+    function renderHistory() {
+      const overall = historyData.overall;
+      $("#historySummary").innerHTML = [
+        ["累计注册用户", overall.totalUsers], ["正常用户", overall.activeUsers], ["禁用用户", overall.disabledUsers],
+        ["累计学习用户", overall.learningUsers], ["从未学习", overall.neverLearnedUsers], ["累计学习人天", overall.studyDays],
+        ["累计点读", overall.reads], ["累计答题", overall.answers], ["历史正确率", `${overall.accuracy}%`],
+        ["累计掌握词汇", overall.masteredWords], ["待复习错题", overall.activeReviews], ["已修正错题", overall.fixedReviews],
+        ["累计绿宝石", overall.emeralds], ["统计期登录用户", overall.loginUsers], ["统计期登录次数", overall.loginCount]
+      ].map(([label, value]) => metric(label, typeof value === "number" ? formatNumber(value) : value)).join("");
+      $("#historyGeneratedAt").textContent = `登录统计始于 ${historyData.loginTrackingStartedAt}`;
+      $("#historyCourses").innerHTML = ["english", "chinese"].map((key) => { const item = historyData.courses[key]; return `<section class="course-data ${key}"><div><span>${key === "english" ? "英文历史" : "中文历史"}</span><strong>${item.learningUsers} 位学习用户</strong></div><p>点读 ${formatNumber(item.reads)} · 答题 ${formatNumber(item.answers)} · 掌握 ${formatNumber(item.masteredWords)} · 绿宝石 ${formatNumber(item.emeralds)}</p></section>`; }).join("");
+    }
+    async function loadDashboard(force = false) {
+      if (!force && dashboardData && Date.now() - dashboardUpdatedAt < 60000) return;
+      const date = $("#dashboardDate").value || chinaDateKey();
+      [dashboardData, historyData] = await Promise.all([api(`/api/admin/dashboard?date=${date}`), api("/api/admin/dashboard/history")]);
+      dashboardUpdatedAt = Date.now(); renderDashboard(); renderHistory(); await loadActiveUsers(1);
     }
 
-    function statusText(status) {
-      return { unused: "未使用", used: "已使用", disabled: "已禁用", active: "正常", free_trial: "免费体验", founder_trial: "创始体验", expired: "已到期" }[status] || status;
-    }
-
-    function courseText(course) { return course === "chinese" ? "中文" : "英文"; }
-
-    function inviteMessage(item) {
-      return [
-        "Minecraft Reader 注册信息",
-        `注册链接：${location.origin}/register`,
-        `手机号：${item.phone}`,
-        `邀请码：${item.inviteCode}`,
-        "一个账号可使用英文和中文课程，首次注册后邀请码自动失效。"
-      ].join("\n");
-    }
-
-    async function copyText(text) {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return;
-      }
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
-    }
-
-    async function loadCourseSummary() {
-      const data = await api(`/api/admin/course-summary?course=${userCourse}`);
-      const metrics = [
-        ["课程主题", data.themeCount],
-        ["课程词汇", data.vocabularySize],
-        ["学习用户", `${data.learnerCount}/${data.totalUsers}`],
-        ["累计点读", data.readCount],
-        ["答题正确率", `${data.accuracy}%`],
-        ["待复习错题", data.reviewCount]
-      ];
-      document.querySelector("#courseSummary").innerHTML = metrics.map(([label, value]) => `
-        <div class="admin-stat"><span>${label}</span><strong>${value}</strong></div>
-      `).join("") + `<div class="summary-foot">累计掌握 ${data.masteredWords} 个词 · 累计答题 ${data.answerCount} 次 · 最近学习 ${formatDate(data.lastStudiedAt)}</div>`;
-    }
-
-    async function loadWhitelist(page = whitelistPage) {
-      const params = new URLSearchParams({ page: String(page), pageSize: String(listPageSize) });
-      const data = await api(`/api/admin/whitelist?${params}`);
-      whitelistItems = data.items;
-      whitelistPage = data.page;
-      whitelistTotalPages = data.totalPages;
-      document.querySelector("#whitelist").innerHTML = data.items.map((item) => `
-        <div class="row">
-          <div>
-            <strong>${escapeHtml(item.phone)}</strong>
-            <div class="muted">${escapeHtml(item.note || "无备注")} · 主课程：${courseText(item.primaryCourse)} · ${statusText(item.status)} · 邀请码：${escapeHtml(item.inviteCode || "已失效")}</div>
-          </div>
-          ${item.status === "unused" ? `<div class="actions"><button class="secondary" data-copy-white="${item.id}">复制</button><button class="danger" data-disable-white="${item.id}">禁用</button></div>` : ""}
-          ${item.status === "disabled" ? `<div class="actions"><button class="secondary" data-restore-white="${item.id}">恢复使用</button></div>` : ""}
-        </div>
-      `).join("") || "<p>暂无白名单</p>";
-      whitelistPageInfo.textContent = `第 ${data.page} / ${data.totalPages} 页，共 ${data.total} 个名单`;
-      prevWhitelistBtn.disabled = data.page <= 1;
-      nextWhitelistBtn.disabled = data.page >= data.totalPages;
+    async function loadActiveUsers(page = activePage) {
+      const params = new URLSearchParams({ date: $("#dashboardDate").value, layer: $("#activeLayer").value, course: $("#activeCourse").value, phone: $("#activePhone").value, page: String(page), pageSize: String(pageSize) });
+      const data = await api(`/api/admin/dashboard/active-users?${params}`); activePage = data.page; activeTotalPages = data.totalPages;
+      const layerName = $("#activeLayer").selectedOptions[0].textContent; $("#activeUsersHeading").textContent = `${data.date} ${layerName}用户`;
+      $("#activeUsers").innerHTML = data.items.map((user) => { const reads = user.englishReads + user.chineseReads, answers = user.englishAnswers + user.chineseAnswers, correct = user.englishCorrect + user.chineseCorrect; return `<div class="row"><div><div class="user-title"><strong>${escapeHtml(user.phone || user.username)}</strong><span class="status-chip ${user.status}">${statusText(user.status)}</span></div><div class="muted">${escapeHtml(user.socialName || "未生成好友名")} · 主课程：${courseText(user.primaryCourse)} · 登录 ${user.loginCount} 次</div><div class="muted">点读 ${reads} · 答题 ${answers} · 正确 ${correct} · 最近活动 ${formatDate(user.lastActivityAt || user.loginAt)}</div></div><button class="secondary" data-progress-user="${user.id}">查看明细</button></div>`; }).join("") || "<p>该筛选条件下暂无用户</p>";
+      $("#activePageInfo").textContent = `第 ${data.page} / ${data.totalPages} 页，共 ${data.total} 人`; $("#prevActiveBtn").disabled = data.page <= 1; $("#nextActiveBtn").disabled = data.page >= data.totalPages;
     }
 
     async function loadUsers(page = usersPage) {
-      const phone = userPhoneSearch.value.trim();
-      const params = new URLSearchParams({
-        page: String(page),
-        pageSize: String(listPageSize),
-        course: userCourse
-      });
-      if (phone) params.set("phone", phone);
-      if (userAccessFilter.value) params.set("accessState", userAccessFilter.value);
-      if (userPrimaryFilter.value) params.set("primaryCourse", userPrimaryFilter.value);
-      const data = await api(`/api/admin/users?${params}`);
-      userItems = data.items;
-      usersPage = data.page;
-      usersTotalPages = data.totalPages;
-      document.querySelector("#users").innerHTML = data.items.map((user) => {
-        const progress = user.progress;
-        return `
-          <div class="row user-admin-row">
-            <div>
-              <div class="user-title"><strong>${escapeHtml(user.phone || user.username)}</strong><span class="status-chip ${user.status}">${statusText(user.status)}</span></div>
-              <div class="muted">${escapeHtml(user.social_name || "未生成好友名")} · ${statusText(user.accessState)} · 主课程：${courseText(user.primary_course)} · 已邀请 ${user.referral_success_count}/${user.referral_max_uses}${user.trial_expires_at ? ` · 到期：${formatDate(user.trial_expires_at)}` : ""}</div>
-              <div class="muted">${escapeHtml(user.role)}${user.password_reset_required ? " · 待设置新密码" : ""} · 掌握 ${progress.masteredWords}/${progress.totalWords} · 正确率 ${progress.accuracy}% · 错题 ${progress.reviewCount}</div>
-              <div class="muted">最近学习：${formatDate(progress.lastStudiedAt)} · 最后登录：${formatDate(user.last_login_at)}</div>
-            </div>
-            <div class="actions">
-              <button class="secondary" data-progress-user="${user.id}">主题明细</button>
-              ${user.role !== "admin" ? `<select aria-label="用户类型" data-access-state="${user.id}"><option value="founder_trial" ${user.accessState === "founder_trial" ? "selected" : ""}>创始体验</option><option value="free_trial" ${user.accessState === "free_trial" ? "selected" : ""}>免费体验</option><option value="expired" ${user.accessState === "expired" ? "selected" : ""}>已到期</option></select><select aria-label="主课程" data-primary-course="${user.id}"><option value="english" ${user.primary_course === "english" ? "selected" : ""}>英文</option><option value="chinese" ${user.primary_course === "chinese" ? "selected" : ""}>中文</option></select><input aria-label="体验到期日" data-trial-expires="${user.id}" type="date" value="${user.trial_expires_at ? escapeHtml(user.trial_expires_at.slice(0, 10)) : ""}"><button class="secondary" data-save-access="${user.id}">保存权益</button><button class="secondary" data-reset-user="${user.id}">重置密码</button><button class="${user.status === "active" ? "danger" : "secondary"}" data-user="${user.id}" data-status="${user.status === "active" ? "disabled" : "active"}">${user.status === "active" ? "禁用" : "启用"}</button>` : ""}
-            </div>
-          </div>`;
-      }).join("") || "<p>暂无用户</p>";
-      usersPageInfo.textContent = `第 ${data.page} / ${data.totalPages} 页，共 ${data.total} 个用户`;
-      prevUsersBtn.disabled = data.page <= 1;
-      nextUsersBtn.disabled = data.page >= data.totalPages;
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), course });
+      if ($("#userPhoneSearch").value) params.set("phone", $("#userPhoneSearch").value);
+      if ($("#userStatusFilter").value) params.set("status", $("#userStatusFilter").value);
+      if ($("#userAccessFilter").value) params.set("accessState", $("#userAccessFilter").value);
+      if ($("#userPrimaryFilter").value) params.set("primaryCourse", $("#userPrimaryFilter").value);
+      if ($("#userActivityFilter").value) params.set("activityStatus", $("#userActivityFilter").value);
+      const data = await api(`/api/admin/users?${params}`); userItems = data.items; usersPage = data.page; usersTotalPages = data.totalPages;
+      $("#users").innerHTML = data.items.map((user) => { const p = user.progress, today = user.todayActivity; return `<div class="row user-admin-row"><div><div class="user-title"><strong>${escapeHtml(user.phone || user.username)}</strong><span class="status-chip ${user.status}">${statusText(user.status)}</span></div><div class="muted">${escapeHtml(user.social_name || "未生成好友名")} · ${statusText(user.accessState)} · 主课程：${courseText(user.primary_course)}${user.trial_expires_at ? ` · 到期：${formatDate(user.trial_expires_at)}` : ""}</div><div class="muted">今日点读 ${today.reads} · 答题 ${today.answers} · 掌握 ${p.masteredWords}/${p.totalWords} · 正确率 ${p.accuracy}% · 错题 ${p.reviewCount}</div><div class="muted">最近学习：${formatDate(p.lastStudiedAt)} · 最后登录：${formatDate(user.last_login_at)}${user.password_reset_required ? " · 待设置新密码" : ""}</div></div><div class="actions"><button class="secondary" data-progress-user="${user.id}">学习明细</button>${user.role !== "admin" ? `<select aria-label="用户类型" data-access-state="${user.id}"><option value="founder_trial" ${user.accessState === "founder_trial" ? "selected" : ""}>创始体验</option><option value="free_trial" ${user.accessState === "free_trial" ? "selected" : ""}>免费体验</option><option value="expired" ${user.accessState === "expired" ? "selected" : ""}>已到期</option></select><select aria-label="主课程" data-primary-course="${user.id}"><option value="english" ${user.primary_course === "english" ? "selected" : ""}>英文</option><option value="chinese" ${user.primary_course === "chinese" ? "selected" : ""}>中文</option></select><input aria-label="体验到期日" data-trial-expires="${user.id}" type="date" value="${user.trial_expires_at ? user.trial_expires_at.slice(0, 10) : ""}"><button class="secondary" data-save-access="${user.id}">保存权益</button><button class="secondary" data-reset-user="${user.id}">重置密码</button><button class="${user.status === "active" ? "danger" : "secondary"}" data-user="${user.id}" data-status="${user.status === "active" ? "disabled" : "active"}">${user.status === "active" ? "禁用" : "启用"}</button>` : ""}</div></div>`; }).join("") || "<p>暂无用户</p>";
+      $("#usersPageInfo").textContent = `第 ${data.page} / ${data.totalPages} 页，共 ${data.total} 个用户`; $("#prevUsersBtn").disabled = data.page <= 1; $("#nextUsersBtn").disabled = data.page >= data.totalPages;
     }
 
-    async function loadApplications(page = applicationsPage) {
-      const data = await api(`/api/admin/registration-applications?status=pending&page=${page}&pageSize=${listPageSize}`);
-      applicationsPage = data.page;
-      applicationsTotalPages = data.totalPages;
-      applications.innerHTML = data.items.map((item) => `<div class="row"><div><strong>${escapeHtml(item.phone)}</strong><div class="muted">${escapeHtml(item.socialName)} · ${courseText(item.primaryCourse)} · 邀请人 ${escapeHtml(item.inviterSocialName)} · ${formatDate(item.createdAt)}</div></div><div class="actions"><button data-approve-application="${item.id}">批准</button><button class="danger" data-reject-application="${item.id}">拒绝</button></div></div>`).join("") || "<p>暂无待审核申请</p>";
-      applicationsPageInfo.textContent = `第 ${data.page} / ${data.totalPages} 页，共 ${data.total} 个申请`;
-      prevApplicationsBtn.disabled = data.page <= 1;
-      nextApplicationsBtn.disabled = data.page >= data.totalPages;
+    async function loadCourseSummary() {
+      $$('[data-course]').forEach((button) => button.classList.toggle("active", button.dataset.course === course)); $$('[data-course-range]').forEach((button) => button.classList.toggle("active", button.dataset.courseRange === courseRange));
+      const data = await api(`/api/admin/course-summary?course=${course}&range=${courseRange}`);
+      $("#courseSummary").innerHTML = [["课程主题", data.themeCount], ["课程词汇", data.vocabularySize], ["学习用户", data.learnerCount], ["点读次数", data.readCount], ["答题数", data.answerCount], ["正确率", `${data.accuracy}%`], ["累计掌握", data.masteredWords], ["待复习错题", data.reviewCount], ["发放绿宝石", data.emeralds]].map(([label, value]) => metric(label, typeof value === "number" ? formatNumber(value) : value)).join("");
+      $("#courseThemes").innerHTML = data.themes.map((theme) => `<div class="theme-operation-row"><div><strong>${escapeHtml(theme.title)}</strong><span>${theme.learnerCount} 位学习用户 · 掌握 ${theme.masteredWords} · 答题 ${theme.answerCount}</span></div><div class="progress-track"><i style="width:${Math.min(100, theme.totalWords ? theme.masteredWords / Math.max(1, theme.learnerCount * theme.totalWords) * 100 : 0)}%"></i></div><b>${theme.accuracy}%</b></div>`).join("");
+      $("#courseUsers").innerHTML = data.topUsers.map((user, index) => `<div class="row"><div><strong>${index + 1}. ${escapeHtml(user.socialName || user.phone)}</strong><div class="muted">${escapeHtml(user.phone || "-")} · 点读 ${user.readCount} · 答题 ${user.answerCount} · 掌握 ${user.masteredWords}</div></div><b>${user.answerCount ? Math.round(user.correctCount / user.answerCount * 100) : 0}%</b></div>`).join("") || "<p>该时间范围暂无学习用户</p>";
     }
 
-    async function loadAuditLogs(page = auditPage) {
-      const params = new URLSearchParams({ page: String(page), pageSize: "20" });
-      if (auditAction.value.trim()) params.set("action", auditAction.value.trim());
-      const data = await api(`/api/admin/audit-logs?${params}`);
-      auditPage = data.page;
-      auditTotalPages = data.totalPages;
-      auditLogs.innerHTML = data.items.map((item) => `<div class="row"><div><strong>${escapeHtml(item.action)}</strong><div class="muted">${escapeHtml(item.adminUsername || "system")} · ${escapeHtml(item.targetType || "-")} #${escapeHtml(item.targetId || "-")} · ${formatDate(item.createdAt)}</div></div></div>`).join("") || "<p>暂无操作日志</p>";
-      auditPageInfo.textContent = `第 ${data.page} / ${data.totalPages} 页，共 ${data.total} 条`;
-      prevAuditBtn.disabled = data.page <= 1;
-      nextAuditBtn.disabled = data.page >= data.totalPages;
-    }
+    async function loadAccessSummary() { const data = historyData || await api("/api/admin/dashboard/history"); historyData = data; const item = data.invitations; $("#accessSummary").innerHTML = [["准入记录", item.total], ["完成注册", item.completed], ["转化率", `${item.conversion}%`], ["未使用白名单", item.whitelist.unused], ["禁用白名单", item.whitelist.disabled]].map(([label, value]) => metric(label, value)).join(""); }
+    async function loadWhitelist(page = whitelistPage) { const data = await api(`/api/admin/whitelist?page=${page}&pageSize=${pageSize}`); whitelistItems = data.items; whitelistPage = data.page; whitelistTotalPages = data.totalPages; $("#whitelist").innerHTML = data.items.map((item) => `<div class="row"><div><strong>${escapeHtml(item.phone)}</strong><div class="muted">${escapeHtml(item.note || "无备注")} · 主课程：${courseText(item.primaryCourse)} · ${statusText(item.status)} · 邀请码：${escapeHtml(item.inviteCode || "已失效")}</div></div><div class="actions">${item.status === "unused" ? `<button class="secondary" data-copy-white="${item.id}">复制</button><button class="danger" data-disable-white="${item.id}">禁用</button>` : ""}${item.status === "disabled" ? `<button class="secondary" data-restore-white="${item.id}">恢复使用</button>` : ""}</div></div>`).join("") || "<p>暂无白名单</p>"; $("#whitelistPageInfo").textContent = `第 ${data.page} / ${data.totalPages} 页，共 ${data.total} 个名单`; $("#prevWhitelistBtn").disabled = data.page <= 1; $("#nextWhitelistBtn").disabled = data.page >= data.totalPages; }
+    async function loadApplications(page = applicationsPage) { const data = await api(`/api/admin/registration-applications?status=pending&page=${page}&pageSize=${pageSize}`); applicationsPage = data.page; applicationsTotalPages = data.totalPages; $("#applications").innerHTML = data.items.map((item) => `<div class="row"><div><strong>${escapeHtml(item.phone)}</strong><div class="muted">${escapeHtml(item.socialName)} · ${courseText(item.primaryCourse)} · 邀请人 ${escapeHtml(item.inviterSocialName)} · ${formatDate(item.createdAt)}</div></div><div class="actions"><button data-approve-application="${item.id}">批准</button><button class="danger" data-reject-application="${item.id}">拒绝</button></div></div>`).join("") || "<p>暂无待审核申请</p>"; $("#applicationsPageInfo").textContent = `第 ${data.page} / ${data.totalPages} 页，共 ${data.total} 个申请`; $("#prevApplicationsBtn").disabled = data.page <= 1; $("#nextApplicationsBtn").disabled = data.page >= data.totalPages; }
 
-    async function showUserDetail(userId) {
-      userDetailModal.hidden = false;
-      userDetailBody.innerHTML = '<p class="detail-loading">正在加载课程明细...</p>';
-      const data = await api(`/api/admin/users/${userId}/progress?course=${userCourse}`);
-      const copy = courseCopy[userCourse];
-      document.querySelector("#detailCourse").textContent = copy.label;
-      document.querySelector("#detailTitle").textContent = `${data.user.phone || data.user.username} 的学习明细`;
-      const totals = data.progress.totals;
-      userDetailBody.innerHTML = `
-        <div class="detail-summary">
-          <div class="admin-stat"><span>课程完成率</span><strong>${totals.completion}%</strong></div>
-          <div class="admin-stat"><span>答题正确率</span><strong>${totals.accuracy}%</strong></div>
-          <div class="admin-stat"><span>待复习错题</span><strong>${totals.reviewCount}</strong></div>
-          <div class="admin-stat"><span>奖励等级</span><strong>Lv${data.reward.level}</strong><small>${escapeHtml(data.reward.title)} · ${data.reward.totalEmeralds ?? data.reward.totalExp ?? 0} ${escapeHtml(data.reward.currencyLabel || "绿宝石")}</small></div>
-        </div>
-        <div class="theme-progress-list">
-          ${data.progress.themes.map((theme) => `
-            <div class="theme-progress-row">
-              <div class="theme-progress-copy"><strong>${escapeHtml(theme.title)}</strong><span>${theme.masteredWords}/${theme.totalWords} 已掌握 · 正确率 ${theme.accuracy}% · 错题 ${theme.reviewCount}</span></div>
-              <div class="progress-track" aria-label="${escapeHtml(theme.title)} 完成率 ${theme.completion}%"><i style="width:${theme.completion}%"></i></div>
-              <b>${theme.completion}%</b>
-            </div>
-          `).join("")}
-        </div>`;
-    }
+    async function loadSocial() { const data = await api("/api/admin/social-summary"); const s = data.summary; $("#socialSummary").innerHTML = [["有效邀请链接", s.activeLinks], ["成功邀请", s.approvedReferrals], ["好友关系", s.friendships], ["累计共同任务", s.completedChallenges], ["本周任务", s.weeklyChallenges], ["本周已完成", s.weeklyCompleted]].map(([label, value]) => metric(label, value)).join(""); $("#topInviters").innerHTML = data.topInviters.map((item, index) => `<div class="row"><div><strong>${index + 1}. ${escapeHtml(item.socialName)}</strong><div class="muted">${escapeHtml(item.phone)}</div></div><b>${item.invitedCount} 人</b></div>`).join("") || "<p>暂无邀请数据</p>"; const max = Math.max(1, ...data.trend.map((item) => item.friendships)); $("#friendTrend").innerHTML = data.trend.map((item) => `<div class="trend-row"><time>${item.date.slice(5)}</time><span class="trend-track"><i style="width:${Math.max(2, item.friendships / max * 100)}%"></i></span><b>${item.friendships}</b></div>`).join(""); $("#recentFriendships").innerHTML = data.recentFriendships.map((item) => `<div class="row"><div><strong>${escapeHtml(item.firstName)} + ${escapeHtml(item.secondName)}</strong><div class="muted">${courseText(item.primaryCourse)}课程 · ${formatDate(item.createdAt)}</div></div></div>`).join("") || "<p>暂无好友关系</p>"; }
+    async function loadAuditLogs(page = auditPage) { const params = new URLSearchParams({ page: String(page), pageSize: "20" }); if ($("#auditAction").value.trim()) params.set("action", $("#auditAction").value.trim()); const data = await api(`/api/admin/audit-logs?${params}`); auditPage = data.page; auditTotalPages = data.totalPages; $("#auditLogs").innerHTML = data.items.map((item) => `<div class="row"><div><strong>${escapeHtml(item.action)}</strong><div class="muted">${escapeHtml(item.adminUsername || "system")} · ${escapeHtml(item.targetType || "-")} #${escapeHtml(item.targetId || "-")} · ${formatDate(item.createdAt)}</div></div></div>`).join("") || "<p>暂无操作日志</p>"; $("#auditPageInfo").textContent = `第 ${data.page} / ${data.totalPages} 页，共 ${data.total} 条`; $("#prevAuditBtn").disabled = data.page <= 1; $("#nextAuditBtn").disabled = data.page >= data.totalPages; }
 
-    function closeUserDetail() {
-      userDetailModal.hidden = true;
-      userDetailBody.innerHTML = "";
-    }
+    async function showUserDetail(userId, selectedCourse = detailCourse) { detailUserId = Number(userId); detailCourse = selectedCourse === "chinese" ? "chinese" : "english"; $("#userDetailModal").hidden = false; $("#userDetailBody").innerHTML = '<p class="detail-loading">正在加载课程明细...</p>'; $$('[data-detail-course]').forEach((button) => button.classList.toggle("active", button.dataset.detailCourse === detailCourse)); const data = await api(`/api/admin/users/${detailUserId}/progress?course=${detailCourse}`); $("#detailCourse").textContent = `${courseText(detailCourse)}课程`; $("#detailTitle").textContent = `${data.user.phone || data.user.username} 的学习明细`; const t = data.progress.totals; $("#userDetailBody").innerHTML = `<div class="detail-summary">${metric("课程完成率", `${t.completion}%`)}${metric("答题正确率", `${t.accuracy}%`)}${metric("待复习错题", t.reviewCount)}${metric("奖励等级", `Lv${data.reward.level}`, `${data.reward.totalEmeralds} 绿宝石`)}</div><h3>近30天学习日期</h3><div class="recent-day-list">${data.recentDays.map((day) => `<span><b>${day.date.slice(5)}</b> 点读 ${day.reads} · 答题 ${day.answers}</span>`).join("") || "暂无学习记录"}</div><h3>主题进度</h3><div class="theme-progress-list">${data.progress.themes.map((theme) => `<div class="theme-progress-row"><div class="theme-progress-copy"><strong>${escapeHtml(theme.title)}</strong><span>${theme.masteredWords}/${theme.totalWords} 已掌握 · 正确率 ${theme.accuracy}% · 错题 ${theme.reviewCount}</span></div><div class="progress-track"><i style="width:${theme.completion}%"></i></div><b>${theme.completion}%</b></div>`).join("")}</div>`; }
+    function closeUserDetail() { $("#userDetailModal").hidden = true; detailUserId = null; }
 
-    async function setCourse(course) {
-      userCourse = course === "chinese" ? "chinese" : "english";
-      const copy = courseCopy[userCourse];
-      document.querySelectorAll("[data-course]").forEach((button) => {
-        const active = button.dataset.course === userCourse;
-        button.classList.toggle("active", active);
-        button.setAttribute("aria-pressed", String(active));
-      });
-      document.querySelector("#courseHeading").textContent = copy.heading;
-      document.querySelector("#usersHeading").textContent = copy.users;
-      document.querySelector("#courseBadge").textContent = copy.badge;
-      const url = new URL(location.href);
-      url.searchParams.set("course", userCourse);
-      history.replaceState(null, "", url);
-      closeUserDetail();
-      await Promise.all([loadCourseSummary(), loadUsers(1)]);
-    }
-
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const phone = phoneInput.value.trim();
-      if (!/^1[3-9]\d{9}$/.test(phone)) {
-        message.textContent = "请输入正确的11位手机号";
-        phoneInput.focus();
-        return;
-      }
-      message.textContent = "正在生成...";
-      try {
-        const body = Object.fromEntries(new FormData(form).entries());
-        const item = await api("/api/admin/whitelist", { method: "POST", body: JSON.stringify(body) });
-        message.textContent = `邀请码：${item.inviteCode}`;
-        form.reset();
-        await loadWhitelist(1);
-      } catch (error) {
-        message.textContent = error.message;
-      }
-    });
-
-    phoneInput.addEventListener("input", () => {
-      phoneInput.value = phoneInput.value.replace(/\D/g, "").slice(0, 11);
-    });
-
+    $("#whitelistForm").addEventListener("submit", async (event) => { event.preventDefault(); const body = Object.fromEntries(new FormData(event.currentTarget).entries()); if (!/^1[3-9]\d{9}$/.test(body.phone)) return setMessage("请输入正确的11位手机号"); try { const item = await api("/api/admin/whitelist", { method: "POST", body: JSON.stringify(body) }); setMessage(`邀请码：${item.inviteCode}`); event.currentTarget.reset(); await Promise.all([loadWhitelist(1), loadAccessSummary()]); } catch (error) { setMessage(error.message); } });
     document.addEventListener("click", async (event) => {
-      const courseButton = event.target.closest("[data-course]");
-      const copyButton = event.target.closest("[data-copy-white]");
-      const whiteButton = event.target.closest("[data-disable-white]");
-      const restoreWhiteButton = event.target.closest("[data-restore-white]");
-      const userButton = event.target.closest("[data-user]");
-      const resetButton = event.target.closest("[data-reset-user]");
-      const progressButton = event.target.closest("[data-progress-user]");
-      const saveAccessButton = event.target.closest("[data-save-access]");
-      const approveApplicationButton = event.target.closest("[data-approve-application]");
-      const rejectApplicationButton = event.target.closest("[data-reject-application]");
-      const closeButton = event.target.closest("[data-close-detail]");
+      const view = event.target.closest("[data-admin-view]"); const jump = event.target.closest("[data-jump-view]"); const progress = event.target.closest("[data-progress-user]"); const close = event.target.closest("[data-close-detail]");
       try {
-        if (courseButton) return void await setCourse(courseButton.dataset.course);
-        if (closeButton) return closeUserDetail();
-        if (progressButton) return void await showUserDetail(progressButton.dataset.progressUser);
-        if (saveAccessButton) {
-          const id = saveAccessButton.dataset.saveAccess;
-          const accessState = document.querySelector(`[data-access-state="${id}"]`).value;
-          const primaryCourse = document.querySelector(`[data-primary-course="${id}"]`).value;
-          const trialDate = document.querySelector(`[data-trial-expires="${id}"]`).value;
-          const trialExpiresAt = trialDate ? `${trialDate}T23:59:59+08:00` : null;
-          await api(`/api/admin/users/${id}/access`, { method: "PATCH", body: JSON.stringify({ accessState, primaryCourse, trialExpiresAt }) });
-          message.textContent = "用户权益已更新";
-          await loadUsers();
-          return;
-        }
-        if (approveApplicationButton) {
-          if (!confirm("批准后将创建正式账号并开始14天体验，确定继续吗？")) return;
-          await api(`/api/admin/registration-applications/${approveApplicationButton.dataset.approveApplication}/approve`, { method: "POST", body: "{}" });
-          message.textContent = "申请已批准";
-          await Promise.all([loadApplications(), loadUsers(1)]);
-          return;
-        }
-        if (rejectApplicationButton) {
-          const reason = prompt("请输入拒绝原因（可留空）", "") ?? null;
-          if (reason === null) return;
-          await api(`/api/admin/registration-applications/${rejectApplicationButton.dataset.rejectApplication}/reject`, { method: "POST", body: JSON.stringify({ reason }) });
-          message.textContent = "申请已拒绝";
-          await loadApplications();
-          return;
-        }
-        if (copyButton) {
-          const item = whitelistItems.find((entry) => String(entry.id) === copyButton.dataset.copyWhite);
-          if (!item?.inviteCode) return void (message.textContent = "邀请码已失效，无法复制");
-          await copyText(inviteMessage(item));
-          message.textContent = `已复制 ${item.phone} 的邀请信息`;
-          return;
-        }
-        if (whiteButton) {
-          await api(`/api/admin/whitelist/${whiteButton.dataset.disableWhite}`, { method: "PATCH", body: JSON.stringify({ status: "disabled" }) });
-          await loadWhitelist();
-        }
-        if (restoreWhiteButton) {
-          await api(`/api/admin/whitelist/${restoreWhiteButton.dataset.restoreWhite}`, { method: "PATCH", body: JSON.stringify({ status: "unused" }) });
-          message.textContent = "白名单已恢复使用";
-          await loadWhitelist();
-        }
-        if (userButton) {
-          await api(`/api/admin/users/${userButton.dataset.user}`, { method: "PATCH", body: JSON.stringify({ status: userButton.dataset.status }) });
-          await loadUsers();
-          await loadCourseSummary();
-        }
-        if (resetButton) {
-          const user = userItems.find((item) => String(item.id) === resetButton.dataset.resetUser);
-          if (!confirm(`确定重置 ${user?.phone || user?.username || "该用户"} 的密码吗？`)) return;
-          const data = await api(`/api/admin/users/${resetButton.dataset.resetUser}/reset-password`, { method: "POST", body: "{}" });
-          await copyText(`登录地址：${location.origin}/login\n手机号：${data.phone || data.username}\n临时密码：${data.password}\n请登录后设置新密码。`);
-          message.textContent = `已重置 ${data.phone || data.username} 的密码，临时密码已复制`;
-        }
-      } catch (error) {
-        message.textContent = error.message;
-        if (!userDetailModal.hidden) userDetailBody.innerHTML = `<p class="message">${escapeHtml(error.message)}</p>`;
-      }
+        if (view) return showView(view.dataset.adminView);
+        if (jump) return showView(jump.dataset.jumpView);
+        if (close) return closeUserDetail();
+        if (progress) return showUserDetail(progress.dataset.progressUser);
+        const detailSwitch = event.target.closest("[data-detail-course]"); if (detailSwitch && detailUserId) return showUserDetail(detailUserId, detailSwitch.dataset.detailCourse);
+        const courseButton = event.target.closest("[data-course]"); if (courseButton) { course = courseButton.dataset.course; return loadCourseSummary(); }
+        const rangeButton = event.target.closest("[data-course-range]"); if (rangeButton) { courseRange = rangeButton.dataset.courseRange; return loadCourseSummary(); }
+        const save = event.target.closest("[data-save-access]"); if (save) { const id = save.dataset.saveAccess, accessState = $(`[data-access-state="${id}"]`).value, primaryCourse = $(`[data-primary-course="${id}"]`).value, date = $(`[data-trial-expires="${id}"]`).value; await api(`/api/admin/users/${id}/access`, { method: "PATCH", body: JSON.stringify({ accessState, primaryCourse, trialExpiresAt: date ? `${date}T23:59:59+08:00` : null }) }); setMessage("用户权益已更新"); return loadUsers(); }
+        const reset = event.target.closest("[data-reset-user]"); if (reset) { const user = userItems.find((item) => String(item.id) === reset.dataset.resetUser); if (!confirm(`确定重置 ${user?.phone || "该用户"} 的密码吗？`)) return; const data = await api(`/api/admin/users/${reset.dataset.resetUser}/reset-password`, { method: "POST", body: "{}" }); await copyText(`登录地址：${location.origin}/login\n手机号：${data.phone}\n临时密码：${data.password}\n请登录后设置新密码。`); setMessage("临时密码已复制，只有最后一次生成的密码有效"); return loadUsers(); }
+        const account = event.target.closest("[data-user]"); if (account) { await api(`/api/admin/users/${account.dataset.user}`, { method: "PATCH", body: JSON.stringify({ status: account.dataset.status }) }); setMessage("账号状态已更新"); return loadUsers(); }
+        const copy = event.target.closest("[data-copy-white]"); if (copy) { const item = whitelistItems.find((entry) => String(entry.id) === copy.dataset.copyWhite); await copyText(`Minecraft Reader 注册信息\n注册链接：${location.origin}/register\n手机号：${item.phone}\n邀请码：${item.inviteCode}`); return setMessage("邀请信息已复制"); }
+        const disable = event.target.closest("[data-disable-white]"); if (disable) { await api(`/api/admin/whitelist/${disable.dataset.disableWhite}`, { method: "PATCH", body: JSON.stringify({ status: "disabled" }) }); return loadWhitelist(); }
+        const restore = event.target.closest("[data-restore-white]"); if (restore) { await api(`/api/admin/whitelist/${restore.dataset.restoreWhite}`, { method: "PATCH", body: JSON.stringify({ status: "unused" }) }); return loadWhitelist(); }
+        const approve = event.target.closest("[data-approve-application]"); if (approve) { if (!confirm("批准后将创建正式账号并开始14天体验，确定继续吗？")) return; await api(`/api/admin/registration-applications/${approve.dataset.approveApplication}/approve`, { method: "POST", body: "{}" }); setMessage("申请已批准"); return Promise.all([loadApplications(), loadAccessSummary()]); }
+        const reject = event.target.closest("[data-reject-application]"); if (reject) { const reason = prompt("请输入拒绝原因（可留空）", ""); if (reason === null) return; await api(`/api/admin/registration-applications/${reject.dataset.rejectApplication}/reject`, { method: "POST", body: JSON.stringify({ reason }) }); setMessage("申请已拒绝"); return loadApplications(); }
+      } catch (error) { setMessage(error.message); }
     });
 
-    userPhoneSearch.addEventListener("input", () => {
-      userPhoneSearch.value = userPhoneSearch.value.replace(/\D/g, "").slice(0, 11);
-    });
-    userSearchBtn.addEventListener("click", () => loadUsers(1));
-    userPhoneSearch.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        loadUsers(1);
-      }
-    });
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !userDetailModal.hidden) closeUserDetail();
-    });
-    prevUsersBtn.addEventListener("click", () => loadUsers(Math.max(1, usersPage - 1)));
-    nextUsersBtn.addEventListener("click", () => loadUsers(Math.min(usersTotalPages, usersPage + 1)));
-    prevWhitelistBtn.addEventListener("click", () => loadWhitelist(Math.max(1, whitelistPage - 1)));
-    nextWhitelistBtn.addEventListener("click", () => loadWhitelist(Math.min(whitelistTotalPages, whitelistPage + 1)));
-    prevApplicationsBtn.addEventListener("click", () => loadApplications(Math.max(1, applicationsPage - 1)));
-    nextApplicationsBtn.addEventListener("click", () => loadApplications(Math.min(applicationsTotalPages, applicationsPage + 1)));
-    auditSearchBtn.addEventListener("click", () => loadAuditLogs(1));
-    prevAuditBtn.addEventListener("click", () => loadAuditLogs(Math.max(1, auditPage - 1)));
-    nextAuditBtn.addEventListener("click", () => loadAuditLogs(Math.min(auditTotalPages, auditPage + 1)));
+    $("#refreshDashboardBtn").addEventListener("click", () => loadDashboard(true).catch((error) => setMessage(error.message)));
+    $("#dashboardDate").addEventListener("change", () => { dashboardData = null; loadDashboard(true).catch((error) => setMessage(error.message)); });
+    $("#activeSearchBtn").addEventListener("click", () => loadActiveUsers(1)); $("#prevActiveBtn").addEventListener("click", () => loadActiveUsers(Math.max(1, activePage - 1))); $("#nextActiveBtn").addEventListener("click", () => loadActiveUsers(Math.min(activeTotalPages, activePage + 1)));
+    $("#userSearchBtn").addEventListener("click", () => loadUsers(1)); $("#prevUsersBtn").addEventListener("click", () => loadUsers(Math.max(1, usersPage - 1))); $("#nextUsersBtn").addEventListener("click", () => loadUsers(Math.min(usersTotalPages, usersPage + 1)));
+    $("#prevWhitelistBtn").addEventListener("click", () => loadWhitelist(Math.max(1, whitelistPage - 1))); $("#nextWhitelistBtn").addEventListener("click", () => loadWhitelist(Math.min(whitelistTotalPages, whitelistPage + 1))); $("#prevApplicationsBtn").addEventListener("click", () => loadApplications(Math.max(1, applicationsPage - 1))); $("#nextApplicationsBtn").addEventListener("click", () => loadApplications(Math.min(applicationsTotalPages, applicationsPage + 1)));
+    $("#auditSearchBtn").addEventListener("click", () => loadAuditLogs(1)); $("#prevAuditBtn").addEventListener("click", () => loadAuditLogs(Math.max(1, auditPage - 1))); $("#nextAuditBtn").addEventListener("click", () => loadAuditLogs(Math.min(auditTotalPages, auditPage + 1)));
+    [$("#activePhone"), $("#userPhoneSearch"), $("#whitelistForm").elements.phone].forEach((input) => input.addEventListener("input", () => { input.value = input.value.replace(/\D/g, "").slice(0, 11); }));
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !$("#userDetailModal").hidden) closeUserDetail(); });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden && currentView === "overview" && Date.now() - dashboardUpdatedAt >= 60 * 60 * 1000) loadDashboard(true).catch(() => {}); });
+    setInterval(() => { if (currentView === "overview") loadDashboard(true).catch(() => {}); }, 60 * 60 * 1000);
 
-    loadWhitelist();
-    loadApplications();
-    loadAuditLogs();
-    setCourse(userCourse);
+    const today = chinaDateKey(); $("#dashboardDate").max = today; $("#dashboardDate").min = shiftDateKey(today, -29); $("#dashboardDate").value = today;
+    showView(location.hash.slice(1) || "overview", false);
   </script>
 </body>
 </html>
