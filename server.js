@@ -85,7 +85,19 @@ function randomPassword(length = 10) {
 }
 
 function normalizePhone(value) {
-  return String(value || "").replace(/[^\d]/g, "");
+  return String(value || "").normalize("NFKC").replace(/[^\d]/g, "");
+}
+
+function passwordMatchesHash(value, hash) {
+  const password = String(value || "");
+  if (!hash) return false;
+  try {
+    if (bcrypt.compareSync(password, hash)) return true;
+    const trimmed = password.trim();
+    return trimmed !== password && bcrypt.compareSync(trimmed, hash);
+  } catch {
+    return false;
+  }
 }
 
 function isValidPhone(value) {
@@ -2216,11 +2228,17 @@ app.use(session({
 }));
 
 app.get("/portal.css", (req, res) => res.sendFile(path.join(publicDir, "portal.css")));
-app.get("/login", (req, res) => res.sendFile(path.join(publicDir, "login.html")));
+app.get("/login", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  return res.sendFile(path.join(publicDir, "login.html"));
+});
 app.get("/admin-login", (req, res) => res.sendFile(path.join(publicDir, "admin-login.html")));
 app.get("/register", (req, res) => res.sendFile(path.join(publicDir, "register.html")));
 app.get("/privacy", (req, res) => res.sendFile(path.join(publicDir, "privacy.html")));
-app.get("/reset-password", requirePageAuth, (req, res) => res.sendFile(path.join(publicDir, "reset-password.html")));
+app.get("/reset-password", requirePageAuth, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  return res.sendFile(path.join(publicDir, "reset-password.html"));
+});
 app.get("/progress", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "progress.html")));
 app.get("/", requireStudyPage("english"), (req, res) => res.sendFile(path.join(publicDir, "index.html")));
 app.get("/chinese", requireStudyPage("chinese"), (req, res) => res.sendFile(path.join(publicDir, "core-words-cn.html")));
@@ -2341,7 +2359,7 @@ app.post("/api/auth/login", limitLoginIp, limitLoginPhone, (req, res) => {
       : null;
     if (pending) return res.status(403).json({ code: "ACCOUNT_PENDING_REVIEW", error: "注册申请正在等待管理员审核" });
   }
-  const passwordMatches = Boolean(user && bcrypt.compareSync(password, user.password_hash));
+  const passwordMatches = Boolean(user && passwordMatchesHash(password, user.password_hash));
   if (user && passwordMatches && user.status !== "active") {
     return res.status(403).json({ code: "ACCOUNT_DISABLED", error: "账号已被禁用，请联系管理员" });
   }
@@ -2360,9 +2378,22 @@ app.post("/api/auth/change-password", requireAuth, (req, res) => {
   const currentPassword = String(req.body.currentPassword || "");
   const newPassword = String(req.body.newPassword || "");
   if (newPassword.length < 8) return res.status(400).json({ error: "新密码至少8位" });
-  if (!bcrypt.compareSync(currentPassword, req.user.password_hash)) {
+  if (!passwordMatchesHash(currentPassword, req.user.password_hash)) {
     return res.status(401).json({ error: "当前密码不正确" });
   }
+  db.prepare("UPDATE users SET password_hash = ?, password_reset_required = 0 WHERE id = ?")
+    .run(bcrypt.hashSync(newPassword, 10), req.user.id);
+  return res.json({ ok: true, user: publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(req.user.id)) });
+});
+
+app.post("/api/auth/complete-password-reset", requireAuth, (req, res) => {
+  if (!req.user.password_reset_required) {
+    return res.status(409).json({ code: "PASSWORD_RESET_NOT_REQUIRED", error: "当前账号不需要重置密码" });
+  }
+  const newPassword = String(req.body.newPassword || "");
+  const confirmPassword = String(req.body.confirmPassword || "");
+  if (newPassword.length < 8) return res.status(400).json({ error: "新密码至少需要 8 位" });
+  if (newPassword !== confirmPassword) return res.status(400).json({ error: "两次输入的新密码不一致" });
   db.prepare("UPDATE users SET password_hash = ?, password_reset_required = 0 WHERE id = ?")
     .run(bcrypt.hashSync(newPassword, 10), req.user.id);
   return res.json({ ok: true, user: publicUser(db.prepare("SELECT * FROM users WHERE id = ?").get(req.user.id)) });

@@ -11,7 +11,7 @@
     <section class="portal-card">
       <h1 id="productTitle">Minecraft English Reader</h1>
       <p id="productSubtitle">好友小范围英语点读学习</p>
-      <form id="loginForm">
+      <form id="loginForm" novalidate>
         <label><span id="phoneLabel">手机号</span><input name="phone" inputmode="numeric" autocomplete="tel" maxlength="11" pattern="1[3-9][0-9]{9}" required></label>
         <label><span id="passwordLabel">密码</span><input name="password" type="password" autocomplete="current-password" required></label>
         <label class="check-line"><input name="remember" type="checkbox"><span id="rememberLabel">记住手机号</span></label>
@@ -19,13 +19,14 @@
       </form>
       <p class="portal-link" id="registerCopy">第一次使用？<a id="registerLink" href="/register">用邀请码注册</a></p>
       <p class="portal-link" id="forgotCopy">忘记密码？请联系管理员重置，拿到临时密码后登录并设置新密码。</p>
-      <p class="message" id="message"></p>
+      <p class="message" id="message" aria-live="polite"></p>
       <p class="notice" id="unofficialNotice">非官方学习工具，与 Mojang、Microsoft、Minecraft 官方无关联。</p>
     </section>
   </main>
   <script>
     const form = document.querySelector("#loginForm");
     const message = document.querySelector("#message");
+    const loginButton = document.querySelector("#loginButton");
     const registerLink = document.querySelector("#registerLink");
     const rememberKey = "minecraft-reader-login";
     const requestedNext = new URLSearchParams(location.search).get("next") || "";
@@ -58,7 +59,13 @@
       if (!saved) return;
       form.elements.phone.value = saved.phone || saved.username || "";
       form.elements.remember.checked = true;
-      if (saved.password) localStorage.setItem(rememberKey, JSON.stringify({ phone: form.elements.phone.value }));
+      if (saved.password) {
+        form.elements.password.value = saved.password;
+        localStorage.setItem(rememberKey, JSON.stringify({ phone: form.elements.phone.value }));
+        message.textContent = englishUi
+          ? "Your previously remembered password was restored for this sign-in."
+          : "已恢复原来记住的密码，请直接登录一次。";
+      }
     }
 
     function saveRememberedLogin(body) {
@@ -73,27 +80,63 @@
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      message.textContent = englishUi ? "Signing in..." : "正在登录...";
       const body = Object.fromEntries(new FormData(form).entries());
-      body.phone = String(body.phone || "").replace(/\D/g, "").slice(0, 11);
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        message.textContent = data.error || (englishUi ? "Sign-in failed" : "登录失败");
+      body.phone = String(body.phone || "").normalize("NFKC").replace(/\D/g, "").slice(0, 11);
+      body.password = String(body.password || "");
+      if (!/^1[3-9]\d{9}$/.test(body.phone)) {
+        message.textContent = englishUi ? "Enter a valid phone number" : "请输入正确的 11 位手机号";
+        form.elements.phone.focus();
         return;
       }
-      saveRememberedLogin(body);
-      location.href = data.user?.passwordResetRequired
-        ? `/reset-password?next=${encodeURIComponent(nextPath)}`
-        : nextPath;
+      if (!body.password) {
+        message.textContent = englishUi ? "Enter your password" : "请输入密码";
+        form.elements.password.focus();
+        return;
+      }
+      loginButton.disabled = true;
+      loginButton.textContent = englishUi ? "Signing in..." : "正在登录...";
+      message.textContent = englishUi ? "Signing in..." : "正在登录...";
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      let navigating = false;
+      try {
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          message.textContent = data.error || (englishUi ? "Sign-in failed" : "登录失败，请重试");
+          return;
+        }
+        saveRememberedLogin(body);
+        navigating = true;
+        location.replace(data.user?.passwordResetRequired
+          ? `/reset-password?next=${encodeURIComponent(nextPath)}`
+          : nextPath);
+      } catch (error) {
+        message.textContent = error.name === "AbortError"
+          ? (englishUi ? "Connection timed out. Please try again." : "连接超时，请重试。")
+          : (englishUi ? "Network error. Please try again." : "网络连接失败，请重试。");
+      } finally {
+        clearTimeout(timeout);
+        if (!navigating) {
+          loginButton.disabled = false;
+          loginButton.textContent = englishUi ? "Sign In" : "登录";
+        }
+      }
     });
 
     form.elements.phone.addEventListener("input", () => {
-      form.elements.phone.value = form.elements.phone.value.replace(/\D/g, "").slice(0, 11);
+      form.elements.phone.value = form.elements.phone.value.normalize("NFKC").replace(/\D/g, "").slice(0, 11);
+    });
+
+    addEventListener("pageshow", () => {
+      loginButton.disabled = false;
+      loginButton.textContent = englishUi ? "Sign In" : "登录";
     });
 
     loadRememberedLogin();

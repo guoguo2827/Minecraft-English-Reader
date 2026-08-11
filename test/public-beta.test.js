@@ -386,6 +386,38 @@ test("social dashboard is read-only and reports referral relationships", async (
   assert.equal(payload.trend.length, 7);
 });
 
+test("admin reset supports temporary login and one-step new password setup", async () => {
+  const legacy = db.prepare("SELECT id FROM users WHERE phone = ?").get("13900000001");
+  const resetResponse = await fetch(`${baseUrl}/api/admin/users/${legacy.id}/reset-password`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: "{}"
+  });
+  assert.equal(resetResponse.status, 200);
+  const reset = await resetResponse.json();
+  assert.equal(reset.passwordResetRequired, true);
+  assert.equal(reset.password.length, 10);
+
+  const temporaryLogin = await login("１３９０００００００１", ` ${reset.password}\n`);
+  assert.equal(temporaryLogin.response.status, 200);
+  const temporaryPayload = await temporaryLogin.response.json();
+  assert.equal(temporaryPayload.user.passwordResetRequired, true);
+
+  const completeResponse = await fetch(`${baseUrl}/api/auth/complete-password-reset`, {
+    method: "POST",
+    headers: authHeaders(temporaryLogin.cookie),
+    body: JSON.stringify({ newPassword: "RenewedPass123", confirmPassword: "RenewedPass123" })
+  });
+  assert.equal(completeResponse.status, 200);
+  assert.equal((await completeResponse.json()).user.passwordResetRequired, false);
+
+  const reusedTemporaryPassword = await login("13900000001", reset.password);
+  assert.equal(reusedTemporaryPassword.response.status, 401);
+  const renewedLogin = await login("13900000001", "RenewedPass123");
+  assert.equal(renewedLogin.response.status, 200);
+  assert.equal(db.prepare("SELECT password_reset_required FROM users WHERE id = ?").get(legacy.id).password_reset_required, 0);
+});
+
 test("disabled accounts receive a stable API error code", async () => {
   db.prepare("UPDATE users SET status = 'disabled' WHERE phone = ?").run("13700000002");
   const me = await fetch(`${baseUrl}/api/me`, { headers: { Cookie: invitedCookie } });
@@ -402,7 +434,7 @@ test("disabled accounts receive a stable API error code", async () => {
 });
 
 test("main inline page scripts parse", () => {
-  for (const filename of ["index.html", "core-words-cn.html", "admin.html", "friends.html", "register.html"]) {
+  for (const filename of ["index.html", "core-words-cn.html", "admin.html", "friends.html", "register.html", "login.html", "reset-password.html"]) {
     const html = fs.readFileSync(path.join(__dirname, "..", "outputs", filename), "utf8");
     const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map((match) => match[1]).filter(Boolean);
     assert.ok(scripts.length, `${filename} should contain an inline script`);
