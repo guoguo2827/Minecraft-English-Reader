@@ -23,6 +23,9 @@ const host = process.env.HOST || "127.0.0.1";
 const sessionSecret = process.env.SESSION_SECRET || "dev-change-this-session-secret";
 const appTimezone = process.env.APP_TIMEZONE || "Asia/Shanghai";
 const accessControlEnforced = process.env.ACCESS_CONTROL_ENFORCED === "true";
+const cookieSecure = process.env.COOKIE_SECURE === undefined
+  ? process.env.NODE_ENV === "production"
+  : process.env.COOKIE_SECURE === "true";
 const trialDays = 14;
 const referralLimit = 20;
 const auditRetentionDays = 90;
@@ -32,6 +35,9 @@ const dailyExpLimit = 150;
 
 if (process.env.NODE_ENV === "production" && sessionSecret.length < 32) {
   throw new Error("SESSION_SECRET must contain at least 32 characters in production");
+}
+if (process.env.NODE_ENV === "production" && !cookieSecure) {
+  console.warn("WARNING: COOKIE_SECURE=false; login traffic must be moved back to HTTPS as soon as possible.");
 }
 const rewardLevels = [
   { level: 1, minExp: 0, title: "煤炭新手", gemKey: "coal" },
@@ -2222,7 +2228,7 @@ app.use(session({
   cookie: {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production",
+    secure: cookieSecure,
     maxAge: 1000 * 60 * 60 * 24 * 14
   }
 }));
