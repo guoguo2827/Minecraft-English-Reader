@@ -388,6 +388,13 @@ test("social dashboard is read-only and reports referral relationships", async (
 
 test("admin reset supports temporary login and one-step new password setup", async () => {
   const legacy = db.prepare("SELECT id FROM users WHERE phone = ?").get("13900000001");
+  const firstResetResponse = await fetch(`${baseUrl}/api/admin/users/${legacy.id}/reset-password`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: "{}"
+  });
+  assert.equal(firstResetResponse.status, 200);
+  const firstReset = await firstResetResponse.json();
   const resetResponse = await fetch(`${baseUrl}/api/admin/users/${legacy.id}/reset-password`, {
     method: "POST",
     headers: authHeaders(adminCookie),
@@ -397,6 +404,9 @@ test("admin reset supports temporary login and one-step new password setup", asy
   const reset = await resetResponse.json();
   assert.equal(reset.passwordResetRequired, true);
   assert.equal(reset.password.length, 10);
+  assert.notEqual(reset.password, firstReset.password);
+  const expiredTemporaryLogin = await login("13900000001", firstReset.password);
+  assert.equal(expiredTemporaryLogin.response.status, 401);
 
   const temporaryLogin = await login("１３９０００００００１", ` ${reset.password}\n`);
   assert.equal(temporaryLogin.response.status, 200);

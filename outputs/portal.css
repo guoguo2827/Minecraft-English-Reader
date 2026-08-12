@@ -488,6 +488,36 @@ button.danger {
   font-weight: 900;
 }
 
+.reset-password-modal {
+  width: min(620px, 100%);
+}
+
+.reset-password-warning {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 2px solid #c5893a;
+  border-radius: 6px;
+  background: #fff3cf;
+  color: #563719;
+  font-weight: 800;
+}
+
+.reset-password-info {
+  width: 100%;
+  min-height: 170px;
+  resize: vertical;
+  border: 3px solid #5d7d45;
+  border-radius: 6px;
+  background: #fffdf3;
+  color: #182d17;
+  font: 800 16px/1.75 Consolas, "Microsoft YaHei", sans-serif;
+}
+
+.reset-password-actions {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 .admin-body {
   background: #edf5e6;
 }

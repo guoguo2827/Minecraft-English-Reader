@@ -113,6 +113,17 @@
     </section>
   </div>
 
+  <div class="admin-modal" id="resetPasswordModal" hidden>
+    <button class="admin-modal-backdrop" type="button" data-close-reset-password aria-label="关闭临时密码信息"></button>
+    <section class="admin-modal-content reset-password-modal" role="dialog" aria-modal="true" aria-labelledby="resetPasswordTitle">
+      <div class="top"><div><p class="section-kicker">账号安全</p><h2 id="resetPasswordTitle">临时密码已生成</h2></div><button class="icon-close" type="button" data-close-reset-password aria-label="关闭">×</button></div>
+      <p class="reset-password-warning">请复制并发送给用户。只有本次最后生成的临时密码有效，关闭后无法再次查看。</p>
+      <textarea id="resetPasswordInfo" class="reset-password-info" readonly aria-label="用户临时登录信息"></textarea>
+      <div class="actions reset-password-actions"><button id="copyResetPasswordBtn" type="button" data-copy-reset-password>复制登录信息</button><button class="secondary" type="button" data-close-reset-password>关闭</button></div>
+      <p class="message" id="resetPasswordMessage" role="status" aria-live="polite"></p>
+    </section>
+  </div>
+
   <script>
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -130,6 +141,7 @@
     let auditPage = 1, auditTotalPages = 1;
     let course = "english", courseRange = "history";
     let detailUserId = null, detailCourse = "english";
+    let latestResetPasswordInfo = "";
 
     async function api(url, options = {}) {
       const response = await fetch(url, { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } });
@@ -146,8 +158,40 @@
     function metric(label, value, note = "") { return `<div class="admin-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>${note ? `<small>${escapeHtml(note)}</small>` : ""}</div>`; }
     function chinaDateKey(date = new Date()) { const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date); const map = Object.fromEntries(parts.map((part) => [part.type, part.value])); return `${map.year}-${map.month}-${map.day}`; }
     function shiftDateKey(key, days) { const date = new Date(`${key}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); }
-    async function copyText(text) { if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text); const area = document.createElement("textarea"); area.value = text; area.style.position = "fixed"; area.style.opacity = "0"; document.body.appendChild(area); area.select(); document.execCommand("copy"); area.remove(); }
+    async function copyText(text) {
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch {}
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.focus();
+      area.select();
+      let copied = false;
+      try { copied = document.execCommand("copy"); } catch {}
+      area.remove();
+      return copied;
+    }
     function setMessage(text) { message.textContent = text; }
+
+    function showResetPassword(data) {
+      latestResetPasswordInfo = `Minecraft Reader 登录信息\n登录地址：${location.origin}/login\n手机号：${data.phone}\n临时密码：${data.password}\n请登录后设置新密码。`;
+      $("#resetPasswordInfo").value = latestResetPasswordInfo;
+      $("#resetPasswordMessage").textContent = "请点击复制按钮；如果浏览器禁止复制，可直接选中上方内容。";
+      $("#resetPasswordModal").hidden = false;
+      $("#copyResetPasswordBtn").focus();
+    }
+
+    function closeResetPassword() {
+      $("#resetPasswordModal").hidden = true;
+      $("#resetPasswordInfo").value = "";
+      latestResetPasswordInfo = "";
+    }
 
     function showView(name, updateHash = true) {
       currentView = viewTitles[name] ? name : "overview";
@@ -242,17 +286,23 @@
 
     $("#whitelistForm").addEventListener("submit", async (event) => { event.preventDefault(); const body = Object.fromEntries(new FormData(event.currentTarget).entries()); if (!/^1[3-9]\d{9}$/.test(body.phone)) return setMessage("请输入正确的11位手机号"); try { const item = await api("/api/admin/whitelist", { method: "POST", body: JSON.stringify(body) }); setMessage(`邀请码：${item.inviteCode}`); event.currentTarget.reset(); await Promise.all([loadWhitelist(1), loadAccessSummary()]); } catch (error) { setMessage(error.message); } });
     document.addEventListener("click", async (event) => {
-      const view = event.target.closest("[data-admin-view]"); const jump = event.target.closest("[data-jump-view]"); const progress = event.target.closest("[data-progress-user]"); const close = event.target.closest("[data-close-detail]");
+      const view = event.target.closest("[data-admin-view]"); const jump = event.target.closest("[data-jump-view]"); const progress = event.target.closest("[data-progress-user]"); const close = event.target.closest("[data-close-detail]"); const closeReset = event.target.closest("[data-close-reset-password]"); const copyReset = event.target.closest("[data-copy-reset-password]");
       try {
         if (view) return showView(view.dataset.adminView);
         if (jump) return showView(jump.dataset.jumpView);
         if (close) return closeUserDetail();
+        if (closeReset) return closeResetPassword();
+        if (copyReset && latestResetPasswordInfo) {
+          const copied = await copyText(latestResetPasswordInfo);
+          $("#resetPasswordMessage").textContent = copied ? "登录信息已复制，可以发送给用户。" : "浏览器未允许自动复制，请直接选中上方内容复制。";
+          return;
+        }
         if (progress) return showUserDetail(progress.dataset.progressUser);
         const detailSwitch = event.target.closest("[data-detail-course]"); if (detailSwitch && detailUserId) return showUserDetail(detailUserId, detailSwitch.dataset.detailCourse);
         const courseButton = event.target.closest("[data-course]"); if (courseButton) { course = courseButton.dataset.course; return loadCourseSummary(); }
         const rangeButton = event.target.closest("[data-course-range]"); if (rangeButton) { courseRange = rangeButton.dataset.courseRange; return loadCourseSummary(); }
         const save = event.target.closest("[data-save-access]"); if (save) { const id = save.dataset.saveAccess, accessState = $(`[data-access-state="${id}"]`).value, primaryCourse = $(`[data-primary-course="${id}"]`).value, date = $(`[data-trial-expires="${id}"]`).value; await api(`/api/admin/users/${id}/access`, { method: "PATCH", body: JSON.stringify({ accessState, primaryCourse, trialExpiresAt: date ? `${date}T23:59:59+08:00` : null }) }); setMessage("用户权益已更新"); return loadUsers(); }
-        const reset = event.target.closest("[data-reset-user]"); if (reset) { const user = userItems.find((item) => String(item.id) === reset.dataset.resetUser); if (!confirm(`确定重置 ${user?.phone || "该用户"} 的密码吗？`)) return; const data = await api(`/api/admin/users/${reset.dataset.resetUser}/reset-password`, { method: "POST", body: "{}" }); await copyText(`登录地址：${location.origin}/login\n手机号：${data.phone}\n临时密码：${data.password}\n请登录后设置新密码。`); setMessage("临时密码已复制，只有最后一次生成的密码有效"); return loadUsers(); }
+        const reset = event.target.closest("[data-reset-user]"); if (reset) { const user = userItems.find((item) => String(item.id) === reset.dataset.resetUser); if (!confirm(`确定重置 ${user?.phone || "该用户"} 的密码吗？每次重置都会让上一次临时密码失效。`)) return; reset.disabled = true; reset.textContent = "正在生成..."; try { const data = await api(`/api/admin/users/${reset.dataset.resetUser}/reset-password`, { method: "POST", body: "{}" }); showResetPassword(data); setMessage("新的临时密码已生成，请在弹窗中复制"); await loadUsers(); } finally { reset.disabled = false; reset.textContent = "重置密码"; } return; }
         const account = event.target.closest("[data-user]"); if (account) { await api(`/api/admin/users/${account.dataset.user}`, { method: "PATCH", body: JSON.stringify({ status: account.dataset.status }) }); setMessage("账号状态已更新"); return loadUsers(); }
         const copy = event.target.closest("[data-copy-white]"); if (copy) { const item = whitelistItems.find((entry) => String(entry.id) === copy.dataset.copyWhite); await copyText(`Minecraft Reader 注册信息\n注册链接：${location.origin}/register\n手机号：${item.phone}\n邀请码：${item.inviteCode}`); return setMessage("邀请信息已复制"); }
         const disable = event.target.closest("[data-disable-white]"); if (disable) { await api(`/api/admin/whitelist/${disable.dataset.disableWhite}`, { method: "PATCH", body: JSON.stringify({ status: "disabled" }) }); return loadWhitelist(); }
@@ -269,7 +319,7 @@
     $("#prevWhitelistBtn").addEventListener("click", () => loadWhitelist(Math.max(1, whitelistPage - 1))); $("#nextWhitelistBtn").addEventListener("click", () => loadWhitelist(Math.min(whitelistTotalPages, whitelistPage + 1))); $("#prevApplicationsBtn").addEventListener("click", () => loadApplications(Math.max(1, applicationsPage - 1))); $("#nextApplicationsBtn").addEventListener("click", () => loadApplications(Math.min(applicationsTotalPages, applicationsPage + 1)));
     $("#auditSearchBtn").addEventListener("click", () => loadAuditLogs(1)); $("#prevAuditBtn").addEventListener("click", () => loadAuditLogs(Math.max(1, auditPage - 1))); $("#nextAuditBtn").addEventListener("click", () => loadAuditLogs(Math.min(auditTotalPages, auditPage + 1)));
     [$("#activePhone"), $("#userPhoneSearch"), $("#whitelistForm").elements.phone].forEach((input) => input.addEventListener("input", () => { input.value = input.value.replace(/\D/g, "").slice(0, 11); }));
-    document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !$("#userDetailModal").hidden) closeUserDetail(); });
+    document.addEventListener("keydown", (event) => { if (event.key !== "Escape") return; if (!$("#resetPasswordModal").hidden) return closeResetPassword(); if (!$("#userDetailModal").hidden) closeUserDetail(); });
     document.addEventListener("visibilitychange", () => { if (!document.hidden && currentView === "overview" && Date.now() - dashboardUpdatedAt >= 60 * 60 * 1000) loadDashboard(true).catch(() => {}); });
     setInterval(() => { if (currentView === "overview") loadDashboard(true).catch(() => {}); }, 60 * 60 * 1000);
 
