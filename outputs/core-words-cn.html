@@ -793,6 +793,7 @@
     let currentItem = null;
     let quizItem = null;
     let audio = null;
+    const ttsBlobCache = new Map();
     let preloadObserver = null;
     let rewardState = null;
     let currentUserAccess = null;
@@ -858,9 +859,40 @@
       return `/api/tts?${new URLSearchParams({ text, lang: "zh", voice: TTS_VOICE_TYPE, v: TTS_VERSION })}`;
     }
 
+    function loadTtsBlob(text) {
+      const normalized = String(text || "").trim().replace(/\s+/g, " ");
+      const existing = ttsBlobCache.get(normalized);
+      if (existing?.url) return Promise.resolve(existing);
+      if (existing?.promise) return existing.promise;
+      const entry = { url: "", promise: null };
+      entry.promise = fetch(makeTtsUrl(normalized), {
+        credentials: "same-origin",
+        cache: "force-cache"
+      }).then(async (response) => {
+        if (response.status === 401) {
+          location.href = `/login?next=${encodeURIComponent("/chinese")}`;
+          throw new Error("Your session expired. Please sign in again.");
+        }
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok) {
+          const data = contentType.includes("application/json") ? await response.json().catch(() => ({})) : {};
+          if (response.status === 429) throw new Error(data.error || "Too many voice requests. Please wait a moment.");
+          throw new Error(data.error || "Cloud voice is temporarily unavailable.");
+        }
+        if (!contentType.startsWith("audio/")) throw new Error("The voice response was invalid. Please sign in again.");
+        entry.url = URL.createObjectURL(await response.blob());
+        return entry;
+      }).catch((error) => {
+        ttsBlobCache.delete(normalized);
+        throw error;
+      });
+      ttsBlobCache.set(normalized, entry);
+      return entry.promise;
+    }
+
     function preloadTts(text) {
       if (!text) return;
-      fetch(makeTtsUrl(text), { cache: "force-cache" }).catch(() => {});
+      loadTtsBlob(text).catch(() => {});
     }
 
     async function speak(text) {
@@ -871,13 +903,21 @@
       }
       audio.pause();
       audio.currentTime = 0;
-      audio.src = makeTtsUrl(text);
+      const normalized = String(text).trim().replace(/\s+/g, " ");
+      audio.src = ttsBlobCache.get(normalized)?.url || makeTtsUrl(normalized);
       els.voiceBtn.textContent = "Loading Voice...";
       try {
         await audio.play();
         els.voiceBtn.textContent = "Voice Ready";
       } catch {
-        els.voiceBtn.textContent = "Try Again";
+        try {
+          const entry = await loadTtsBlob(normalized);
+          audio.src = entry.url;
+          await audio.play();
+          els.voiceBtn.textContent = "Voice Ready";
+        } catch (error) {
+          els.voiceBtn.textContent = error.message || "Tap Again";
+        }
       }
     }
 
@@ -986,8 +1026,8 @@
           preloadObserver.unobserve(entry.target);
         });
       }, { root: els.cards, rootMargin: "100px" });
-      els.cards.querySelectorAll(".word-card").forEach((card) => preloadObserver.observe(card));
-      theme.items.slice(0, 10).forEach((item, index) => setTimeout(() => preloadTts(item.chinese), index * 140));
+      [...els.cards.querySelectorAll(".word-card")].slice(0, 4).forEach((card) => preloadObserver.observe(card));
+      theme.items.slice(0, 4).forEach((item, index) => setTimeout(() => preloadTts(item.chinese), index * 140));
     }
 
     function renderCards() {

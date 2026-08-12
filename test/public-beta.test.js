@@ -451,3 +451,12 @@ test("main inline page scripts parse", () => {
     for (const script of scripts) assert.doesNotThrow(() => new Function(script), `${filename} script should parse`);
   }
 });
+
+test("learning pages preload a small voice batch and fetch audio with the active session", () => {
+  for (const filename of ["index.html", "core-words-cn.html"]) {
+    const html = fs.readFileSync(path.join(__dirname, "..", "outputs", filename), "utf8");
+    assert.match(html, /credentials:\s*"same-origin"/);
+    assert.match(html, /items\.slice\(0, 4\)/);
+    assert.match(html, /contentType\.startsWith\("audio\/"\)/);
+  }
+});

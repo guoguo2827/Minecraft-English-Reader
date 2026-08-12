@@ -1973,6 +1973,7 @@
     const TTS_VOICE_TYPE = "501008";
     const AUTO_NEXT_DELAY_MS = 1000;
     const ttsPreloadCache = new Set();
+    const ttsBlobCache = new Map();
     const ttsPreloadQueue = [];
     let ttsPreloadActive = false;
     let quizFlowState = "ready";
@@ -2307,15 +2308,29 @@
         ttsAudio = new Audio();
         ttsAudio.preload = "auto";
       }
+      const normalized = String(text || "").trim().replace(/\s+/g, " ");
+      const cached = ttsBlobCache.get(normalized);
       ttsAudio.pause();
       ttsAudio.currentTime = 0;
-      ttsAudio.src = makeTtsUrl(text);
+      ttsAudio.src = cached?.url || makeTtsUrl(normalized);
       els.voiceStatus.textContent = "语音加载中";
       return ttsAudio.play()
         .then(() => {
           voiceUnlocked = true;
           els.voiceStatus.textContent = "语音已开启";
           return true;
+        })
+        .catch(async () => {
+          const entry = await loadTtsBlob(normalized);
+          ttsAudio.src = entry.url;
+          try {
+            await ttsAudio.play();
+            voiceUnlocked = true;
+            els.voiceStatus.textContent = "语音已开启";
+            return true;
+          } catch {
+            throw new Error("浏览器暂未允许播放，请再点一次卡片");
+          }
         });
     }
 
@@ -2326,6 +2341,37 @@
         v: TTS_VERSION
       });
       return `/api/tts?${params.toString()}`;
+    }
+
+    function loadTtsBlob(text) {
+      const normalized = String(text || "").trim().replace(/\s+/g, " ");
+      const existing = ttsBlobCache.get(normalized);
+      if (existing?.url) return Promise.resolve(existing);
+      if (existing?.promise) return existing.promise;
+      const entry = { url: "", promise: null };
+      entry.promise = fetch(makeTtsUrl(normalized), {
+        credentials: "same-origin",
+        cache: "force-cache"
+      }).then(async (response) => {
+        if (response.status === 401) {
+          location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
+          throw new Error("登录已失效，请重新登录");
+        }
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok) {
+          const data = contentType.includes("application/json") ? await response.json().catch(() => ({})) : {};
+          if (response.status === 429) throw new Error(data.error || "语音请求较多，请稍后再试");
+          throw new Error(data.error || "腾讯云语音暂不可用，请稍后重试");
+        }
+        if (!contentType.startsWith("audio/")) throw new Error("语音返回格式异常，请重新登录后再试");
+        entry.url = URL.createObjectURL(await response.blob());
+        return entry;
+      }).catch((error) => {
+        ttsBlobCache.delete(normalized);
+        throw error;
+      });
+      ttsBlobCache.set(normalized, entry);
+      return entry.promise;
     }
 
     function preloadTts(text) {
@@ -2342,7 +2388,7 @@
       while (ttsPreloadQueue.length) {
         const word = ttsPreloadQueue.shift();
         try {
-          await fetch(makeTtsUrl(word), { cache: "force-cache" });
+          await loadTtsBlob(word);
         } catch {}
         await new Promise((resolve) => setTimeout(resolve, 120));
       }
@@ -2350,14 +2396,13 @@
     }
 
     function preloadThemeAudio(theme) {
-      theme.items.forEach((item) => preloadTts(item.word));
+      theme.items.slice(0, 4).forEach((item) => preloadTts(item.word));
     }
 
     async function speak(text, options = {}) {
       if (options.browserOnly) return;
-      preloadTts(text);
-      await playTencentTts(text).catch(() => {
-        els.voiceStatus.textContent = "请重试";
+      await playTencentTts(text).catch((error) => {
+        els.voiceStatus.textContent = error.message || "请重试";
       });
     }
 
