@@ -530,6 +530,21 @@
       font-weight: 900;
     }
 
+    .theme-complete-copy {
+      margin: 14px 0 0;
+      color: #40523a;
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1.55;
+    }
+
+    .theme-complete-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
     .reward-toast {
       position: absolute;
       right: 12px;
@@ -1360,7 +1375,7 @@
         <button class="reward-rules-close" type="button" data-close-reward-rules aria-label="关闭">×</button>
       </div>
       <div class="reward-rule-grid">
-        <div class="reward-rule"><strong>普通答对 +5 绿宝石</strong><span>每次正确回答都能获得绿宝石。</span></div>
+        <div class="reward-rule"><strong>普通答对 +5 绿宝石</strong><span>每个单词在主题中首次答对时获得，答对后不再重复出题。</span></div>
         <div class="reward-rule"><strong>错题复现答对 +4 绿宝石</strong><span>错题连续答对三次后完成修正，当天不再出现。</span></div>
         <div class="reward-rule"><strong>修正错题 +10 绿宝石</strong><span>完成一次错题修正时额外奖励。</span></div>
         <div class="reward-rule"><strong>连续答对奖励</strong><span>x3 +3、x5 +5、x10及之后每10次 +8 绿宝石。</span></div>
@@ -1379,6 +1394,23 @@
         <div class="reward-level-item"><strong>Lv8 下界合金传奇</strong><span>3600 绿宝石</span></div>
       </div>
       <p class="reward-rule-note">每天最多获得 150 绿宝石，达到上限后仍可正常学习和答题。</p>
+    </section>
+  </div>
+
+  <div class="reward-rules-modal" id="themeCompleteModal" hidden>
+    <button class="reward-rules-backdrop" type="button" data-stay-theme aria-label="留在当前主题"></button>
+    <section class="reward-rules-dialog" role="dialog" aria-modal="true" aria-labelledby="themeCompleteTitle">
+      <div class="reward-rules-head">
+        <div>
+          <span class="quiz-label">主题学习完成</span>
+          <h2 id="themeCompleteTitle">太棒了！</h2>
+        </div>
+      </div>
+      <p class="theme-complete-copy" id="themeCompleteCopy"></p>
+      <div class="theme-complete-actions">
+        <button class="big-action secondary" id="stayThemeBtn" type="button">留在本主题</button>
+        <button class="big-action" id="nextThemeBtn" type="button">进入下一主题</button>
+      </div>
     </section>
   </div>
 
@@ -1972,6 +2004,7 @@
     const TTS_VERSION = "20260710-501008";
     const TTS_VOICE_TYPE = "501008";
     const AUTO_NEXT_DELAY_MS = 1000;
+    const AUTO_SPEAK_DELAY_MS = 1500;
     const ttsPreloadCache = new Set();
     const ttsBlobCache = new Map();
     const ttsPreloadQueue = [];
@@ -1980,6 +2013,7 @@
     let quizTransitionId = 0;
     let autoAdvanceTimer = null;
     let autoAdvanceResolve = null;
+    let autoSpeakTimer = null;
     let pendingAutoQuiz = null;
     const gemThemes = {
       coal: { main: "#3f4548", dark: "#171a1c", light: "#9ca5a8", glow: "rgba(190,205,210,.55)" },
@@ -2010,6 +2044,10 @@
       rewardToast: document.querySelector("#rewardToast"),
       rewardRulesBtn: document.querySelector("#rewardRulesBtn"),
       rewardRulesModal: document.querySelector("#rewardRulesModal"),
+      themeCompleteModal: document.querySelector("#themeCompleteModal"),
+      themeCompleteCopy: document.querySelector("#themeCompleteCopy"),
+      stayThemeBtn: document.querySelector("#stayThemeBtn"),
+      nextThemeBtn: document.querySelector("#nextThemeBtn"),
       quizBtn: document.querySelector("#quizBtn"),
       quizWord: document.querySelector("#quizWord"),
       speakQuizBtn: document.querySelector("#speakQuizBtn"),
@@ -2063,7 +2101,9 @@
     function cancelQuizTransition() {
       quizTransitionId += 1;
       if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
+      if (autoSpeakTimer) clearTimeout(autoSpeakTimer);
       autoAdvanceTimer = null;
+      autoSpeakTimer = null;
       if (autoAdvanceResolve) autoAdvanceResolve();
       autoAdvanceResolve = null;
       pendingAutoQuiz = null;
@@ -2077,6 +2117,9 @@
       studyMode = mode === "quiz" ? "quiz" : "learn";
       if (studyMode !== "quiz") cancelQuizTransition();
       document.body.dataset.studyMode = studyMode;
+      if (studyMode === "quiz" && quizFlowState === "complete" && els.themeCompleteCopy.textContent) {
+        els.themeCompleteModal.hidden = false;
+      }
       requestAnimationFrame(() => {
         const target = studyMode === "quiz" ? els.quiz : els.cards;
         setTimeout(() => {
@@ -2518,6 +2561,7 @@
           method: "POST",
           body: JSON.stringify({ themeId: theme.id })
         });
+        if (data?.completed) return data;
         if (!data?.word) throw new Error("题目数据不完整");
         return data;
       } catch (error) {
@@ -2538,7 +2582,40 @@
       return prefix;
     }
 
-    function renderQuiz(data, theme, { autoSpeak = false, transitionId = quizTransitionId } = {}) {
+    function nextAvailableThemeIndex() {
+      for (let index = currentThemeIndex + 1; index < themes.length; index += 1) {
+        if (!themeIsLocked(themes[index])) return index;
+      }
+      return -1;
+    }
+
+    function showThemeComplete(data, theme) {
+      cancelQuizTransition();
+      quizItem = null;
+      quizFlowState = "complete";
+      els.quizBtn.disabled = true;
+      els.quizWord.textContent = "主题完成";
+      els.answers.innerHTML = "";
+      els.feedback.textContent = `${theme.title} 已全部答完！`;
+      handleRewardResponse(data);
+      const nextIndex = nextAvailableThemeIndex();
+      els.themeCompleteCopy.textContent = nextIndex >= 0
+        ? `“${theme.title}”中的单词已经全部完成。要进入“${themes[nextIndex].title}”继续学习吗？`
+        : `“${theme.title}”中的单词已经全部完成，当前已没有其他可进入的主题。`;
+      els.nextThemeBtn.hidden = nextIndex < 0;
+      els.nextThemeBtn.dataset.themeIndex = String(nextIndex);
+      if (studyMode === "quiz") els.themeCompleteModal.hidden = false;
+    }
+
+    function scheduleQuestionSpeech(text, transitionId) {
+      if (autoSpeakTimer) clearTimeout(autoSpeakTimer);
+      autoSpeakTimer = setTimeout(() => {
+        autoSpeakTimer = null;
+        if (transitionId === quizTransitionId && studyMode === "quiz") speak(text);
+      }, AUTO_SPEAK_DELAY_MS);
+    }
+
+    function renderQuiz(data, theme, { autoSpeak = false, delayedSpeak = false, transitionId = quizTransitionId } = {}) {
       if (transitionId !== quizTransitionId || theme !== themes[currentThemeIndex]) return false;
       const questionItem = theme.items.find((item) => item.word === data.word) || theme.items[0];
       quizItem = questionItem;
@@ -2613,7 +2690,10 @@
           }
         });
       });
-      if (autoSpeak) speak(questionItem.word);
+      if (autoSpeak) {
+        if (delayedSpeak) scheduleQuestionSpeech(questionItem.word, transitionId);
+        else speak(questionItem.word);
+      }
       return true;
     }
 
@@ -2626,6 +2706,10 @@
       els.feedback.textContent = "正在加载下一题...";
       try {
         const data = await (prefetchedQuestion || fetchQuizData(theme));
+        if (data?.completed) {
+          showThemeComplete(data, theme);
+          return;
+        }
         renderQuiz(data, theme, { autoSpeak, transitionId });
       } catch (error) {
         if (transitionId !== quizTransitionId) return;
@@ -2665,8 +2749,12 @@
         els.feedback.textContent = `${successFeedback} 下一题加载失败，请点击“下一题”重试`;
         return;
       }
+      if (next.data?.completed) {
+        showThemeComplete(next.data, theme);
+        return;
+      }
       quizFlowState = "loading-next";
-      renderQuiz(next.data, theme, { autoSpeak: true, transitionId });
+      renderQuiz(next.data, theme, { autoSpeak: true, delayedSpeak: true, transitionId });
     }
 
     function setTheme(index) {
@@ -2713,8 +2801,27 @@
     els.rewardRulesModal?.addEventListener("click", (event) => {
       if (event.target.closest("[data-close-reward-rules]")) els.rewardRulesModal.hidden = true;
     });
+    els.stayThemeBtn?.addEventListener("click", () => {
+      els.themeCompleteModal.hidden = true;
+      setStudyMode("learn");
+    });
+    els.themeCompleteModal?.addEventListener("click", (event) => {
+      if (event.target.closest("[data-stay-theme]")) {
+        els.themeCompleteModal.hidden = true;
+        setStudyMode("learn");
+      }
+    });
+    els.nextThemeBtn?.addEventListener("click", () => {
+      const index = Number(els.nextThemeBtn.dataset.themeIndex);
+      els.themeCompleteModal.hidden = true;
+      if (Number.isInteger(index) && index >= 0) setTheme(index);
+    });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !els.rewardRulesModal?.hidden) els.rewardRulesModal.hidden = true;
+      if (event.key === "Escape" && !els.themeCompleteModal?.hidden) {
+        els.themeCompleteModal.hidden = true;
+        setStudyMode("learn");
+      }
     });
     window.speechSynthesis?.addEventListener?.("voiceschanged", pickVoice);
     window.addEventListener("resize", () => renderCards());

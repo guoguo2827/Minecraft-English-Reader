@@ -87,6 +87,8 @@ test("incremental migration preserves existing user and adds public beta schema"
     .get("2026-08-09-review-three-correct-v1"));
   assert.ok(db.prepare("SELECT version FROM schema_migrations WHERE version = ?")
     .get("2026-08-10-admin-dashboard-v1"));
+  assert.ok(db.prepare("SELECT version FROM schema_migrations WHERE version = ?")
+    .get("2026-08-12-theme-single-pass-v1"));
   for (const table of ["admin_audit_logs", "registration_applications", "referral_links", "friendships", "friend_pk_bonus_events", "user_login_days"]) {
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
   }
@@ -319,6 +321,85 @@ test("Chinese review words use the same three-correct daily rest rule", async ()
   }
 });
 
+test("correct words leave the theme quiz and completion is reported", async () => {
+  const user = db.prepare("SELECT id FROM users WHERE role = 'admin'").get();
+  const themesResponse = await fetch(`${baseUrl}/api/themes`, { headers: { Cookie: adminCookie } });
+  const themes = await themesResponse.json();
+  const theme = themes.themes[0];
+  db.prepare("DELETE FROM review_queue WHERE user_id = ? AND theme_id = ?").run(user.id, theme.id);
+  db.prepare("DELETE FROM word_progress WHERE user_id = ? AND theme_id = ?").run(user.id, theme.id);
+  db.prepare("DELETE FROM theme_badges WHERE user_id = ? AND theme_id = ?").run(user.id, theme.id);
+
+  const first = await fetch(`${baseUrl}/api/quiz/next`, {
+    method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ themeId: theme.id })
+  }).then((response) => response.json());
+  const firstItem = theme.items.find((item) => item.word === first.word);
+  await fetch(`${baseUrl}/api/quiz/answer`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ themeId: theme.id, word: first.word, selectedCn: firstItem.cn })
+  });
+  assert.equal(db.prepare(`
+    SELECT mastery_status FROM word_progress WHERE user_id = ? AND theme_id = ? AND word = ?
+  `).get(user.id, theme.id, first.word).mastery_status, "mastered");
+  for (let index = 0; index < 30; index += 1) {
+    const next = await fetch(`${baseUrl}/api/quiz/next`, {
+      method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ themeId: theme.id })
+    }).then((response) => response.json());
+    assert.notEqual(next.word, first.word, "a correct regular word must not repeat in the theme run");
+    if (next.completed) break;
+  }
+
+  const insertProgress = db.prepare(`
+    INSERT INTO word_progress (user_id, theme_id, word, answer_count, correct_count, mastery_status, last_studied_at)
+    VALUES (?, ?, ?, 1, 1, 'mastered', ?)
+    ON CONFLICT(user_id, theme_id, word)
+    DO UPDATE SET correct_count = 1, mastery_status = 'mastered', last_studied_at = excluded.last_studied_at
+  `);
+  for (const item of theme.items) insertProgress.run(user.id, theme.id, item.word, new Date().toISOString());
+  const completed = await fetch(`${baseUrl}/api/quiz/next`, {
+    method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ themeId: theme.id })
+  }).then((response) => response.json());
+  assert.equal(completed.completed, true);
+  assert.equal(completed.themeId, theme.id);
+  assert.ok(Array.isArray(completed.rewardEvents));
+
+  const chineseThemes = await fetch(`${baseUrl}/api/chinese/themes`, { headers: { Cookie: adminCookie } })
+    .then((response) => response.json());
+  const chineseTheme = chineseThemes.themes[0];
+  db.prepare("DELETE FROM chinese_review_queue WHERE user_id = ? AND theme_id = ?").run(user.id, chineseTheme.id);
+  db.prepare("DELETE FROM chinese_word_progress WHERE user_id = ? AND theme_id = ?").run(user.id, chineseTheme.id);
+  db.prepare("DELETE FROM chinese_theme_badges WHERE user_id = ? AND theme_id = ?").run(user.id, chineseTheme.id);
+  const chineseFirst = await fetch(`${baseUrl}/api/chinese/quiz/next`, {
+    method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ themeId: chineseTheme.id })
+  }).then((response) => response.json());
+  const chineseFirstItem = chineseTheme.items.find((item) => item.id === chineseFirst.itemId);
+  await fetch(`${baseUrl}/api/chinese/quiz/answer`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ themeId: chineseTheme.id, itemId: chineseFirst.itemId, selectedChinese: chineseFirstItem.chinese })
+  });
+  for (let index = 0; index < 30; index += 1) {
+    const next = await fetch(`${baseUrl}/api/chinese/quiz/next`, {
+      method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ themeId: chineseTheme.id })
+    }).then((response) => response.json());
+    assert.notEqual(next.itemId, chineseFirst.itemId, "a correct Chinese word must not repeat in the theme run");
+    if (next.completed) break;
+  }
+  const insertChineseProgress = db.prepare(`
+    INSERT INTO chinese_word_progress (user_id, theme_id, item_id, answer_count, correct_count, mastery_status, last_studied_at)
+    VALUES (?, ?, ?, 1, 1, 'mastered', ?)
+    ON CONFLICT(user_id, theme_id, item_id)
+    DO UPDATE SET correct_count = 1, mastery_status = 'mastered', last_studied_at = excluded.last_studied_at
+  `);
+  for (const item of chineseTheme.items) insertChineseProgress.run(user.id, chineseTheme.id, item.id, new Date().toISOString());
+  const chineseCompleted = await fetch(`${baseUrl}/api/chinese/quiz/next`, {
+    method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ themeId: chineseTheme.id })
+  }).then((response) => response.json());
+  assert.equal(chineseCompleted.completed, true);
+  assert.equal(chineseCompleted.themeId, chineseTheme.id);
+});
+
 test("admin dashboard separates login, learning and historical totals", async () => {
   const failedLogin = await login("13900000001", "WrongPassword123");
   assert.equal(failedLogin.response.status, 401);
@@ -458,5 +539,14 @@ test("learning pages preload a small voice batch and fetch audio with the active
     assert.match(html, /credentials:\s*"same-origin"/);
     assert.match(html, /items\.slice\(0, 4\)/);
     assert.match(html, /contentType\.startsWith\("audio\/"\)/);
+  }
+});
+
+test("learning pages delay automatic question speech and handle theme completion", () => {
+  for (const filename of ["index.html", "core-words-cn.html"]) {
+    const html = fs.readFileSync(path.join(__dirname, "..", "outputs", filename), "utf8");
+    assert.match(html, /AUTO_SPEAK_DELAY_MS\s*=\s*1500/);
+    assert.match(html, /function showThemeComplete/);
+    assert.match(html, /data\?\.completed/);
   }
 });

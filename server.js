@@ -467,6 +467,38 @@ function applyAdminDashboardMigration() {
   })();
 }
 
+function applySinglePassQuizMigration() {
+  const version = "2026-08-12-theme-single-pass-v1";
+  if (migrationApplied(version)) return;
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE word_progress
+      SET mastery_status = 'mastered'
+      WHERE correct_count > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM review_queue
+          WHERE review_queue.user_id = word_progress.user_id
+            AND review_queue.theme_id = word_progress.theme_id
+            AND review_queue.word = word_progress.word
+            AND review_queue.status = 'active'
+        )
+    `).run();
+    db.prepare(`
+      UPDATE chinese_word_progress
+      SET mastery_status = 'mastered'
+      WHERE correct_count > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM chinese_review_queue
+          WHERE chinese_review_queue.user_id = chinese_word_progress.user_id
+            AND chinese_review_queue.theme_id = chinese_word_progress.theme_id
+            AND chinese_review_queue.item_id = chinese_word_progress.item_id
+            AND chinese_review_queue.status = 'active'
+        )
+    `).run();
+    markMigration(version);
+  })();
+}
+
 function initDb() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -679,6 +711,7 @@ function initDb() {
   applyPublicBetaMigration();
   applyThreeCorrectReviewMigration();
   applyAdminDashboardMigration();
+  applySinglePassQuizMigration();
 }
 
 function ensureAdmin() {
@@ -1073,27 +1106,43 @@ function chooseQuizItem(userId, themeId) {
   if (!theme) throw new Error("未知主题");
   const state = getQuizState(userId, themeId);
   const questionNo = state.question_no + 1;
-  db.prepare("UPDATE theme_quiz_state SET question_no = ?, updated_at = ? WHERE user_id = ? AND theme_id = ?")
-    .run(questionNo, now(), userId, themeId);
-
   const reviewItems = db.prepare(`
     SELECT word, due_question_no, status, updated_at FROM review_queue
     WHERE user_id = ? AND theme_id = ?
   `).all(userId, themeId);
-  const dueWords = new Set(reviewItems
-    .filter((item) => item.status === "active" && item.due_question_no <= questionNo)
+  const activeReviews = reviewItems.filter((item) => item.status === "active");
+  const activeWords = new Set(activeReviews.map((item) => item.word));
+  const dueWords = new Set(activeReviews
+    .filter((item) => item.due_question_no <= questionNo)
     .map((item) => item.word));
-  const pendingWords = new Set(reviewItems
-    .filter((item) => item.status === "active" && item.due_question_no > questionNo)
-    .map((item) => item.word));
-  const fixedTodayWords = new Set(reviewItems
-    .filter((item) => item.status === "fixed" && shanghaiDateKey(new Date(item.updated_at)) === todayKey())
-    .map((item) => item.word));
+  const correctWords = new Set(db.prepare(`
+    SELECT word FROM word_progress
+    WHERE user_id = ? AND theme_id = ? AND correct_count > 0
+  `).all(userId, themeId).map((item) => item.word));
+  const freshItems = theme.items.filter((item) => !correctWords.has(item.word) && !activeWords.has(item.word));
   let candidates = dueWords.size
     ? theme.items.filter((item) => dueWords.has(item.word))
-    : theme.items.filter((item) => !pendingWords.has(item.word) && !fixedTodayWords.has(item.word));
-  if (!candidates.length) candidates = theme.items.filter((item) => !fixedTodayWords.has(item.word));
-  if (!candidates.length) throw new Error("今天该主题的错题已全部修正，请明天再练习");
+    : freshItems;
+  if (!candidates.length && activeReviews.length) {
+    const earliestDue = Math.min(...activeReviews.map((item) => item.due_question_no));
+    const earliestWords = new Set(activeReviews
+      .filter((item) => item.due_question_no === earliestDue)
+      .map((item) => item.word));
+    candidates = theme.items.filter((item) => earliestWords.has(item.word));
+  }
+  if (!candidates.length) {
+    const badge = maybeGrantThemeBadge(userId, theme);
+    return {
+      completed: true,
+      themeId,
+      themeTitle: theme.title,
+      totalWords: theme.items.length,
+      rewardEvents: badge.events,
+      rewardState: badge.state
+    };
+  }
+  db.prepare("UPDATE theme_quiz_state SET question_no = ?, updated_at = ? WHERE user_id = ? AND theme_id = ?")
+    .run(questionNo, now(), userId, themeId);
   const quizItem = candidates[crypto.randomInt(candidates.length)];
   const wrongPool = shuffle(theme.items.filter((item) => item.cn !== quizItem.cn)).slice(0, 3);
   return {
@@ -1141,6 +1190,12 @@ function answerQuiz(userId, themeId, word, selectedCn) {
   const existingProgress = db.prepare("SELECT consecutive_correct FROM word_progress WHERE user_id = ? AND theme_id = ? AND word = ?")
     .get(userId, themeId, word);
   if (correct && existingProgress) consecutiveCorrect = existingProgress.consecutive_correct + 1;
+  const reviewFixCount = correct && hadActiveReview ? queue.consecutive_fix_count + 1 : 0;
+  const masteryStatus = !correct
+    ? "review"
+    : hadActiveReview && reviewFixCount < 3
+      ? "review"
+      : "mastered";
 
   db.prepare(`
     INSERT INTO word_progress (
@@ -1162,7 +1217,7 @@ function answerQuiz(userId, themeId, word, selectedCn) {
     correct ? 1 : 0,
     correct ? 0 : 1,
     correct ? consecutiveCorrect : 0,
-    correct ? (consecutiveCorrect >= 3 ? "mastered" : "learning") : "review",
+    masteryStatus,
     now()
   );
 
@@ -1536,27 +1591,43 @@ function chooseChineseQuizItem(userId, themeId) {
   if (!theme) throw new Error("Unknown Chinese course theme");
   const state = getChineseQuizState(userId, themeId);
   const questionNo = state.question_no + 1;
-  db.prepare("UPDATE chinese_theme_quiz_state SET question_no = ?, updated_at = ? WHERE user_id = ? AND theme_id = ?")
-    .run(questionNo, now(), userId, themeId);
-
   const reviewItems = db.prepare(`
     SELECT item_id, due_question_no, status, updated_at FROM chinese_review_queue
     WHERE user_id = ? AND theme_id = ?
   `).all(userId, themeId);
-  const dueIds = new Set(reviewItems
-    .filter((item) => item.status === "active" && item.due_question_no <= questionNo)
+  const activeReviews = reviewItems.filter((item) => item.status === "active");
+  const activeIds = new Set(activeReviews.map((item) => item.item_id));
+  const dueIds = new Set(activeReviews
+    .filter((item) => item.due_question_no <= questionNo)
     .map((item) => item.item_id));
-  const pendingIds = new Set(reviewItems
-    .filter((item) => item.status === "active" && item.due_question_no > questionNo)
-    .map((item) => item.item_id));
-  const fixedTodayIds = new Set(reviewItems
-    .filter((item) => item.status === "fixed" && shanghaiDateKey(new Date(item.updated_at)) === todayKey())
-    .map((item) => item.item_id));
+  const correctIds = new Set(db.prepare(`
+    SELECT item_id FROM chinese_word_progress
+    WHERE user_id = ? AND theme_id = ? AND correct_count > 0
+  `).all(userId, themeId).map((item) => item.item_id));
+  const freshItems = theme.items.filter((item) => !correctIds.has(item.id) && !activeIds.has(item.id));
   let candidates = dueIds.size
     ? theme.items.filter((item) => dueIds.has(item.id))
-    : theme.items.filter((item) => !pendingIds.has(item.id) && !fixedTodayIds.has(item.id));
-  if (!candidates.length) candidates = theme.items.filter((item) => !fixedTodayIds.has(item.id));
-  if (!candidates.length) throw new Error("All review words in this theme are fixed for today. Try again tomorrow.");
+    : freshItems;
+  if (!candidates.length && activeReviews.length) {
+    const earliestDue = Math.min(...activeReviews.map((item) => item.due_question_no));
+    const earliestIds = new Set(activeReviews
+      .filter((item) => item.due_question_no === earliestDue)
+      .map((item) => item.item_id));
+    candidates = theme.items.filter((item) => earliestIds.has(item.id));
+  }
+  if (!candidates.length) {
+    const badge = maybeGrantChineseThemeBadge(userId, theme);
+    return {
+      completed: true,
+      themeId,
+      themeTitle: theme.title,
+      totalWords: theme.items.length,
+      rewardEvents: badge.events,
+      rewardState: badge.state
+    };
+  }
+  db.prepare("UPDATE chinese_theme_quiz_state SET question_no = ?, updated_at = ? WHERE user_id = ? AND theme_id = ?")
+    .run(questionNo, now(), userId, themeId);
   const item = candidates[crypto.randomInt(candidates.length)];
   const seenChinese = new Set([item.chinese]);
   const wrongPool = shuffle(theme.items.filter((candidate) => candidate.id !== item.id)).filter((candidate) => {
@@ -1778,6 +1849,12 @@ function answerChineseQuiz(userId, themeId, itemId, selectedChinese) {
     WHERE user_id = ? AND theme_id = ? AND item_id = ?
   `).get(userId, themeId, itemId);
   const consecutiveCorrect = correct ? (existingProgress?.consecutive_correct || 0) + 1 : 0;
+  const reviewFixCount = correct && hadActiveReview ? queue.consecutive_fix_count + 1 : 0;
+  const masteryStatus = !correct
+    ? "review"
+    : hadActiveReview && reviewFixCount < 3
+      ? "review"
+      : "mastered";
 
   db.prepare(`
     INSERT INTO chinese_word_progress (
@@ -1798,7 +1875,7 @@ function answerChineseQuiz(userId, themeId, itemId, selectedChinese) {
     correct ? 1 : 0,
     correct ? 0 : 1,
     consecutiveCorrect,
-    correct ? (consecutiveCorrect >= 3 ? "mastered" : "learning") : "review",
+    masteryStatus,
     now()
   );
 
