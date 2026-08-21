@@ -580,6 +580,55 @@ test("speaking phrase data, scores and rewards stay isolated", () => {
   assert.equal(columns.some((name) => /audio|blob|recording/i.test(name)), false);
 });
 
+test("speaking audio waits for the Tencent SOE handshake", async () => {
+  const originalWebSocket = globalThis.WebSocket;
+  const originalAppId = process.env.TENCENT_SOE_APP_ID;
+  const originalSecretId = process.env.TENCENT_SECRET_ID;
+  const originalSecretKey = process.env.TENCENT_SECRET_KEY;
+  class FakeWebSocket {
+    static instances = [];
+    constructor() {
+      this.listeners = new Map();
+      this.sent = [];
+      FakeWebSocket.instances.push(this);
+      queueMicrotask(() => this.emit("open", {}));
+    }
+    addEventListener(type, listener) {
+      const listeners = this.listeners.get(type) || [];
+      listeners.push(listener);
+      this.listeners.set(type, listeners);
+    }
+    emit(type, event) {
+      for (const listener of this.listeners.get(type) || []) listener(event);
+    }
+    send(value) { this.sent.push(value); }
+    close() {}
+  }
+  try {
+    globalThis.WebSocket = FakeWebSocket;
+    process.env.TENCENT_SOE_APP_ID = "1234567890";
+    process.env.TENCENT_SECRET_ID = "test-secret-id";
+    process.env.TENCENT_SECRET_KEY = "test-secret-key";
+    const assessment = helpers.assessSpeakingPcm("hello world", Buffer.alloc(16000));
+    await new Promise((resolve) => setImmediate(resolve));
+    const socket = FakeWebSocket.instances[0];
+    assert.equal(socket.sent.length, 0);
+    socket.emit("message", { data: JSON.stringify({ code: 0, message: "success", voice_id: "test" }) });
+    assert.equal(socket.sent.length, 2);
+    assert.ok(Buffer.isBuffer(socket.sent[0]));
+    assert.equal(socket.sent[1], JSON.stringify({ type: "end" }));
+    const result = { SuggestedScore: 88, PronAccuracy: 86, PronFluency: .9, PronCompletion: 1 };
+    socket.emit("message", { data: JSON.stringify({ code: 0, result }) });
+    socket.emit("message", { data: JSON.stringify({ code: 0, final: 1 }) });
+    assert.deepEqual(await assessment, result);
+  } finally {
+    globalThis.WebSocket = originalWebSocket;
+    if (originalAppId === undefined) delete process.env.TENCENT_SOE_APP_ID; else process.env.TENCENT_SOE_APP_ID = originalAppId;
+    if (originalSecretId === undefined) delete process.env.TENCENT_SECRET_ID; else process.env.TENCENT_SECRET_ID = originalSecretId;
+    if (originalSecretKey === undefined) delete process.env.TENCENT_SECRET_KEY; else process.env.TENCENT_SECRET_KEY = originalSecretKey;
+  }
+});
+
 test("main inline page scripts parse", () => {
   for (const filename of ["index.html", "core-words-cn.html", "speaking.html", "admin.html", "friends.html", "register.html", "login.html", "reset-password.html"]) {
     const html = fs.readFileSync(path.join(__dirname, "..", "outputs", filename), "utf8");

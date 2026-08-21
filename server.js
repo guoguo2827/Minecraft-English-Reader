@@ -1653,6 +1653,7 @@ function assessSpeakingPcm(referenceText, pcmBuffer) {
   return new Promise((resolve, reject) => {
     const socket = new globalThis.WebSocket(url);
     let settled = false;
+    let handshakeAccepted = false;
     let audioSent = false;
     let latestResult = null;
     const timeout = setTimeout(() => finish(new Error("Tencent SOE request timed out")), 30000);
@@ -1663,12 +1664,9 @@ function assessSpeakingPcm(referenceText, pcmBuffer) {
       try { socket.close(); } catch {}
       if (error) reject(error); else resolve(result);
     }
-    socket.addEventListener("open", () => {
-      if (audioSent || settled) return;
-      audioSent = true;
-      socket.send(pcmBuffer);
-      socket.send(JSON.stringify({ type: "end" }));
-    });
+    // Transport open is not the SOE authentication handshake. Tencent sends a
+    // code=0 text response first; only then may the recording be uploaded.
+    socket.addEventListener("open", () => {});
     socket.addEventListener("error", () => finish(new Error("Tencent SOE connection failed")));
     socket.addEventListener("close", () => {
       if (!settled) finish(new Error("Tencent SOE connection closed before final result"));
@@ -1677,7 +1675,16 @@ function assessSpeakingPcm(referenceText, pcmBuffer) {
       let message;
       try { message = JSON.parse(String(event.data)); } catch { return; }
       if (Number(message.code || 0) !== 0) {
-        finish(new Error(message.message || `Tencent SOE error ${message.code}`));
+        finish(new Error(`Tencent SOE error ${message.code}: ${message.message || "unknown error"}`));
+        return;
+      }
+      if (!handshakeAccepted) {
+        handshakeAccepted = true;
+        if (!audioSent && !settled) {
+          audioSent = true;
+          socket.send(pcmBuffer);
+          socket.send(JSON.stringify({ type: "end" }));
+        }
         return;
       }
       if (message.result !== undefined) latestResult = message.result;
@@ -4079,6 +4086,7 @@ module.exports = {
   sessionStore,
   helpers: {
     allowedThemeIds,
+    assessSpeakingPcm,
     normalizeSoeResult,
     recordSpeakingResult,
     friendStats,
