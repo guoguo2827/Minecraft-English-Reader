@@ -1,0 +1,101 @@
+id,theme_id,theme_cn,theme_en,english,chinese
+1,basic-expressions,基础表达,Basic Expressions,I am here.,我在这里。
+2,basic-expressions,基础表达,Basic Expressions,You are here.,你在这里。
+3,basic-expressions,基础表达,Basic Expressions,This is a block.,这是一个方块。
+4,basic-expressions,基础表达,Basic Expressions,That is a tree.,那是一棵树。
+5,basic-expressions,基础表达,Basic Expressions,I see a pig.,我看到一只猪。
+6,basic-expressions,基础表达,Basic Expressions,I see a cow.,我看到一头牛。
+7,basic-expressions,基础表达,Basic Expressions,I have a block.,我有一个方块。
+8,basic-expressions,基础表达,Basic Expressions,I have a sword.,我有一把剑。
+9,basic-expressions,基础表达,Basic Expressions,This is my house.,这是我的房子。
+10,basic-expressions,基础表达,Basic Expressions,That is your house.,那是你的房子。
+11,basic-expressions,基础表达,Basic Expressions,Come here.,过来。
+12,basic-expressions,基础表达,Basic Expressions,Go there.,去那里。
+13,basic-expressions,基础表达,Basic Expressions,Look at me.,看我。
+14,basic-expressions,基础表达,Basic Expressions,Look at this.,看这个。
+15,basic-expressions,基础表达,Basic Expressions,Help me.,帮帮我。
+16,basic-expressions,基础表达,Basic Expressions,Wait for me.,等等我。
+17,basic-expressions,基础表达,Basic Expressions,Follow me.,跟着我。
+18,basic-expressions,基础表达,Basic Expressions,Stop!,停！
+19,basic-expressions,基础表达,Basic Expressions,Let's go!,我们走吧！
+20,basic-expressions,基础表达,Basic Expressions,Let's play!,我们来玩吧！
+21,actions-and-commands,动作与指令,Actions and Commands,Break the block.,打破这个方块。
+22,actions-and-commands,动作与指令,Actions and Commands,Place the block.,放置这个方块。
+23,actions-and-commands,动作与指令,Actions and Commands,Open the door.,打开门。
+24,actions-and-commands,动作与指令,Actions and Commands,Close the door.,关上门。
+25,actions-and-commands,动作与指令,Actions and Commands,Jump!,跳！
+26,actions-and-commands,动作与指令,Actions and Commands,Run!,跑！
+27,actions-and-commands,动作与指令,Actions and Commands,Walk slowly.,慢慢走。
+28,actions-and-commands,动作与指令,Actions and Commands,Dig here.,在这里挖。
+29,actions-and-commands,动作与指令,Actions and Commands,Build here.,在这里建造。
+30,actions-and-commands,动作与指令,Actions and Commands,Mine the stone.,挖石头。
+31,actions-and-commands,动作与指令,Actions and Commands,Cut the tree.,砍树。
+32,actions-and-commands,动作与指令,Actions and Commands,Use the tool.,使用工具。
+33,actions-and-commands,动作与指令,Actions and Commands,Take this.,拿这个。
+34,actions-and-commands,动作与指令,Actions and Commands,Give me that.,把那个给我。
+35,actions-and-commands,动作与指令,Actions and Commands,Put it here.,把它放这里。
+36,actions-and-commands,动作与指令,Actions and Commands,Put it there.,把它放那里。
+37,actions-and-commands,动作与指令,Actions and Commands,Try again.,再试一次。
+38,actions-and-commands,动作与指令,Actions and Commands,Be careful.,小心。
+39,actions-and-commands,动作与指令,Actions and Commands,Don't fall.,不要掉下去。
+40,actions-and-commands,动作与指令,Actions and Commands,Don't run.,不要跑。
+41,sentence-expansion,简单句扩展,Sentence Expansion,I am building a house.,我正在建房子。
+42,sentence-expansion,简单句扩展,Sentence Expansion,I am digging a hole.,我在挖洞。
+43,sentence-expansion,简单句扩展,Sentence Expansion,I am cutting a tree.,我在砍树。
+44,sentence-expansion,简单句扩展,Sentence Expansion,I am running fast.,我跑得很快。
+45,sentence-expansion,简单句扩展,Sentence Expansion,I am jumping.,我在跳。
+46,sentence-expansion,简单句扩展,Sentence Expansion,He is my friend.,他是我的朋友。
+47,sentence-expansion,简单句扩展,Sentence Expansion,She is my friend.,她是我的朋友。
+48,sentence-expansion,简单句扩展,Sentence Expansion,We are a team.,我们是一个团队。
+49,sentence-expansion,简单句扩展,Sentence Expansion,Let's build together.,我们一起建造吧。
+50,sentence-expansion,简单句扩展,Sentence Expansion,Let's work together.,我们一起合作吧。
+51,sentence-expansion,简单句扩展,Sentence Expansion,This is easy.,这个很简单。
+52,sentence-expansion,简单句扩展,Sentence Expansion,This is hard.,这个很难。
+53,sentence-expansion,简单句扩展,Sentence Expansion,I like this.,我喜欢这个。
+54,sentence-expansion,简单句扩展,Sentence Expansion,I don't like this.,我不喜欢这个。
+55,sentence-expansion,简单句扩展,Sentence Expansion,This is fun.,这个很好玩。
+56,sentence-expansion,简单句扩展,Sentence Expansion,I need help.,我需要帮助。
+57,sentence-expansion,简单句扩展,Sentence Expansion,Can you help me?,你可以帮我吗？
+58,sentence-expansion,简单句扩展,Sentence Expansion,"Yes, I can.","是的，我可以。"
+59,sentence-expansion,简单句扩展,Sentence Expansion,"No, I can't.","不，我不行。"
+60,sentence-expansion,简单句扩展,Sentence Expansion,Thank you.,谢谢你。
+61,questions-and-communication,问句与交流,Questions and Communication,What is this?,这是什么？
+62,questions-and-communication,问句与交流,Questions and Communication,What is that?,那是什么？
+63,questions-and-communication,问句与交流,Questions and Communication,Where are you?,你在哪里？
+64,questions-and-communication,问句与交流,Questions and Communication,Where is my house?,我的房子在哪里？
+65,questions-and-communication,问句与交流,Questions and Communication,Who is he?,他是谁？
+66,questions-and-communication,问句与交流,Questions and Communication,What are you doing?,你在做什么？
+67,questions-and-communication,问句与交流,Questions and Communication,I am building.,我在建造。
+68,questions-and-communication,问句与交流,Questions and Communication,I am mining.,我在挖矿。
+69,questions-and-communication,问句与交流,Questions and Communication,I am exploring.,我在探索。
+70,questions-and-communication,问句与交流,Questions and Communication,I am fighting.,我在战斗。
+71,questions-and-communication,问句与交流,Questions and Communication,Do you have a sword?,你有剑吗？
+72,questions-and-communication,问句与交流,Questions and Communication,Do you have food?,你有食物吗？
+73,questions-and-communication,问句与交流,Questions and Communication,Can you build?,你会建造吗？
+74,questions-and-communication,问句与交流,Questions and Communication,Can you jump?,你会跳吗？
+75,questions-and-communication,问句与交流,Questions and Communication,Can you help me?,你能帮我吗？
+76,questions-and-communication,问句与交流,Questions and Communication,Let's go home.,我们回家吧。
+77,questions-and-communication,问句与交流,Questions and Communication,Let's find food.,我们去找食物吧。
+78,questions-and-communication,问句与交流,Questions and Communication,Let's build a house.,我们建一个房子吧。
+79,questions-and-communication,问句与交流,Questions and Communication,Let's explore.,我们去探索吧。
+80,questions-and-communication,问句与交流,Questions and Communication,Let's fight together.,我们一起战斗吧。
+81,advanced-expressions,简单进阶表达,Advanced Expressions,I am building a big house.,我在建一个大房子。
+82,advanced-expressions,简单进阶表达,Advanced Expressions,I am making a farm.,我在做一个农场。
+83,advanced-expressions,简单进阶表达,Advanced Expressions,I am looking for food.,我在找食物。
+84,advanced-expressions,简单进阶表达,Advanced Expressions,I am looking for you.,我在找你。
+85,advanced-expressions,简单进阶表达,Advanced Expressions,I am coming.,我来了。
+86,advanced-expressions,简单进阶表达,Advanced Expressions,"Wait for me, please.",请等我。
+87,advanced-expressions,简单进阶表达,Advanced Expressions,"Follow me, please.",请跟我来。
+88,advanced-expressions,简单进阶表达,Advanced Expressions,Stay here.,待在这里。
+89,advanced-expressions,简单进阶表达,Advanced Expressions,Don't go there.,不要去那里。
+90,advanced-expressions,简单进阶表达,Advanced Expressions,It is dangerous.,那里很危险。
+91,advanced-expressions,简单进阶表达,Advanced Expressions,We need food.,我们需要食物。
+92,advanced-expressions,简单进阶表达,Advanced Expressions,We need a house.,我们需要房子。
+93,advanced-expressions,简单进阶表达,Advanced Expressions,We need tools.,我们需要工具。
+94,advanced-expressions,简单进阶表达,Advanced Expressions,Let's build a farm.,我们建一个农场吧。
+95,advanced-expressions,简单进阶表达,Advanced Expressions,Let's make a plan.,我们制定一个计划吧。
+96,advanced-expressions,简单进阶表达,Advanced Expressions,Good job!,做得好！
+97,advanced-expressions,简单进阶表达,Advanced Expressions,That is great!,太棒了！
+98,advanced-expressions,简单进阶表达,Advanced Expressions,You did it!,你做到了！
+99,advanced-expressions,简单进阶表达,Advanced Expressions,Try your best!,尽你最大努力！
+100,advanced-expressions,简单进阶表达,Advanced Expressions,We did it!,我们成功了！

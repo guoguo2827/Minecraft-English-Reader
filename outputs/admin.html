@@ -78,6 +78,11 @@
         <div class="admin-summary-grid" id="courseSummary"></div>
         <div class="theme-operations" id="courseThemes"></div>
         <section class="admin-subsection"><h3>课程学习排行</h3><p class="muted">用于了解学习情况，不在这里修改账号。</p><div class="list" id="courseUsers"></div></section>
+        <section class="admin-subsection">
+          <div class="section-heading"><div><p class="section-kicker">独立功能</p><h3>口语测评与套餐</h3></div><span class="shared-badge" id="speakingServiceStatus">正在读取</span></div>
+          <div class="admin-summary-grid compact-summary" id="speakingSummary"></div>
+          <div id="speakingPackage"></div>
+        </section>
       </section>
 
       <section class="admin-view" data-admin-panel="access" hidden>
@@ -205,7 +210,7 @@
       try {
         if (currentView === "overview") await loadDashboard();
         if (currentView === "users") await loadUsers(1);
-        if (currentView === "courses") await loadCourseSummary();
+        if (currentView === "courses") await Promise.all([loadCourseSummary(), loadSpeakingSummary()]);
         if (currentView === "access") await Promise.all([loadWhitelist(), loadApplications(), loadAccessSummary()]);
         if (currentView === "social") await loadSocial();
         if (currentView === "security") await loadAuditLogs();
@@ -272,6 +277,19 @@
       $("#courseSummary").innerHTML = [["课程主题", data.themeCount], ["课程词汇", data.vocabularySize], ["学习用户", data.learnerCount], ["点读次数", data.readCount], ["答题数", data.answerCount], ["正确率", `${data.accuracy}%`], ["累计掌握", data.masteredWords], ["待复习错题", data.reviewCount], ["发放绿宝石", data.emeralds]].map(([label, value]) => metric(label, typeof value === "number" ? formatNumber(value) : value)).join("");
       $("#courseThemes").innerHTML = data.themes.map((theme) => `<div class="theme-operation-row"><div><strong>${escapeHtml(theme.title)}</strong><span>${theme.learnerCount} 位学习用户 · 掌握 ${theme.masteredWords} · 答题 ${theme.answerCount}</span></div><div class="progress-track"><i style="width:${Math.min(100, theme.totalWords ? theme.masteredWords / Math.max(1, theme.learnerCount * theme.totalWords) * 100 : 0)}%"></i></div><b>${theme.accuracy}%</b></div>`).join("");
       $("#courseUsers").innerHTML = data.topUsers.map((user, index) => `<div class="row"><div><strong>${index + 1}. ${escapeHtml(user.socialName || user.phone)}</strong><div class="muted">${escapeHtml(user.phone || "-")} · 点读 ${user.readCount} · 答题 ${user.answerCount} · 掌握 ${user.masteredWords}</div></div><b>${user.answerCount ? Math.round(user.correctCount / user.answerCount * 100) : 0}%</b></div>`).join("") || "<p>该时间范围暂无学习用户</p>";
+    }
+
+    async function loadSpeakingSummary() {
+      const data = await api("/api/admin/speaking-summary");
+      $("#speakingServiceStatus").textContent = data.enabled && data.configured ? "服务已开启" : "服务未开启";
+      $("#speakingSummary").innerHTML = [
+        ["今日调用", data.today.calls], ["今日用户", data.today.activeUsers],
+        ["今日通过率", `${data.today.passRate}%`], ["今日错误", data.today.errors],
+        ["累计调用", data.total.calls], ["解锁用户", data.total.unlockedUsers],
+        ["已掌握句子", data.total.masteredPhrases], ["口语徽章", data.total.badges]
+      ].map(([label, value]) => metric(label, typeof value === "number" ? formatNumber(value) : value)).join("");
+      const warning = { normal: "额度充足", warning: "已使用超过70%", danger: "已使用超过90%", critical: "套餐额度已用完" }[data.package.warningLevel];
+      $("#speakingPackage").innerHTML = `<div class="theme-operation-row"><div><strong>智聆口语评测套餐</strong><span>已用 ${formatNumber(data.package.used)} / ${formatNumber(data.package.total)} 次 · 保留 ${formatNumber(data.package.reserve)} 次调试额度 · 每人每天 ${data.limits.daily} 次</span></div><div class="progress-track"><i style="width:${data.package.percent}%"></i></div><b>${data.package.percent}% · ${warning}</b></div>`;
     }
 
     async function loadAccessSummary() { const data = historyData || await api("/api/admin/dashboard/history"); historyData = data; const item = data.invitations; $("#accessSummary").innerHTML = [["准入记录", item.total], ["完成注册", item.completed], ["转化率", `${item.conversion}%`], ["未使用白名单", item.whitelist.unused], ["禁用白名单", item.whitelist.disabled]].map(([label, value]) => metric(label, value)).join(""); }

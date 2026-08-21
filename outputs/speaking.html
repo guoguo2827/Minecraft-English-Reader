@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Minecraft 英语口语测评</title>
+  <link rel="stylesheet" href="speaking.css">
+</head>
+<body data-show-chinese="true">
+  <header class="speaking-topbar">
+    <div class="speaking-brand"><strong>Minecraft Speaking Quest</strong><span>方块英语口语测评 · 100句跟读挑战</span></div>
+    <nav class="top-actions" aria-label="页面导航">
+      <button class="pixel-button secondary" id="chineseToggle" type="button">隐藏中文</button>
+      <a href="/">返回单词学习</a>
+      <a class="secondary" href="/progress">我的进度</a>
+    </nav>
+  </header>
+
+  <main class="speaking-shell">
+    <section class="loading-screen" id="loadingScreen"><h1>正在检查口语资格...</h1><p>准备100句方块世界英语挑战</p></section>
+
+    <section class="locked-screen" id="lockedScreen" hidden>
+      <div class="lock-cube" aria-hidden="true">?</div>
+      <h1>口语测评尚未解锁</h1>
+      <p id="lockMessage">掌握英语主课程80%的单词后即可开启。</p>
+      <div class="unlock-numbers">
+        <div><strong id="masteredWords">0</strong><span>已掌握</span></div>
+        <div><strong id="requiredWords">218</strong><span>解锁要求</span></div>
+        <div><strong id="remainingWords">218</strong><span>还差</span></div>
+      </div>
+      <div class="progress-bar" aria-label="解锁进度"><i id="unlockBar"></i></div>
+      <p><b id="unlockPercent">0%</b> · 资格解锁后永久保留</p>
+      <a class="pixel-button" href="/">继续学习单词</a>
+    </section>
+
+    <section class="speaking-workspace" id="speakingWorkspace" hidden>
+      <aside class="chapters-panel">
+        <h2 class="panel-title">口语章节</h2>
+        <div class="chapter-list" id="chapterList"></div>
+      </aside>
+
+      <section class="task-panel">
+        <header class="task-toolbar">
+          <strong class="phrase-position" id="phrasePosition">第 1 / 20 句</strong>
+          <div class="controls">
+            <button id="prevPhraseBtn" type="button" aria-label="上一句">上一句</button>
+            <button id="nextPhraseBtn" type="button" aria-label="下一句">下一句</button>
+          </div>
+        </header>
+        <div class="phrase-stage">
+          <article class="phrase-card">
+            <img class="phrase-visual" id="phraseVisual" alt="方块世界口语练习图标">
+            <h1 class="phrase-english" id="phraseEnglish">I am here.</h1>
+            <p class="phrase-chinese" id="phraseChinese">我在这里。</p>
+            <div class="listen-row"><button id="listenBtn" type="button">听标准音</button></div>
+          </article>
+
+          <section class="result-panel" id="resultPanel" hidden aria-live="polite">
+            <div class="result-card">
+              <div class="score-ring"><strong id="resultScore">0</strong></div>
+              <div class="stars" id="resultStars" aria-label="评测星级"></div>
+              <h2 id="resultTitle">继续加油！</h2>
+              <p id="resultMessage"></p>
+              <div class="result-actions"><button id="retryBtn" type="button">再试一次</button><button id="resultNextBtn" type="button">下一句</button></div>
+            </div>
+          </section>
+        </div>
+        <div class="record-console">
+          <div class="wave-wrap"><canvas id="waveCanvas" width="360" height="48" aria-label="录音音量波形"></canvas><div class="record-state" id="recordState">点击按钮，准备跟读</div></div>
+          <button class="mic-button" id="micBtn" type="button">开始录音</button>
+          <div class="record-timer" id="recordTimer">00:00</div>
+        </div>
+      </section>
+
+      <aside class="growth-panel">
+        <h2>我的口语成长</h2>
+        <div class="growth-grid">
+          <div class="growth-stat"><strong id="attemptedCount">0</strong><span>已练习</span></div>
+          <div class="growth-stat"><strong id="masteredCount">0</strong><span>三星掌握</span></div>
+          <div class="growth-stat"><strong id="averageScore">0</strong><span>平均最佳分</span></div>
+          <div class="growth-stat"><strong id="badgeCount">0</strong><span>口语徽章</span></div>
+        </div>
+        <div class="daily-box"><strong>今日评测次数</strong><div class="progress-bar"><i id="dailyBar"></i></div><p><span id="todayRemaining">20</span> 次剩余</p></div>
+        <div class="badge-box"><strong>已获得徽章</strong><div class="badge-list" id="badgeList"><span class="muted">完成每章20句三星挑战即可获得</span></div></div>
+      </aside>
+    </section>
+    <footer class="app-footer">非官方英语学习工具，与 Mojang、Microsoft、Minecraft 官方无关联。录音仅用于本次评测，不保存到服务器。</footer>
+  </main>
+
+  <div class="privacy-modal" id="privacyModal" hidden>
+    <section class="privacy-card" role="dialog" aria-modal="true" aria-labelledby="privacyTitle">
+      <h2 id="privacyTitle">开始口语评测前</h2>
+      <p>浏览器会申请麦克风权限。录音只在本次评测期间使用，提交评分后立即释放，不保存录音，也不提供录音回放。</p>
+      <p>每次最长15秒，请在安静环境中清楚地读出屏幕上的英文句子。</p>
+      <div class="actions"><button class="pixel-button secondary" id="privacyCancelBtn" type="button">暂不使用</button><button class="pixel-button" id="privacyConfirmBtn" type="button">我知道了，开启麦克风</button></div>
+    </section>
+  </div>
+
+  <div class="rotate-notice"><div><strong>请将设备横过来</strong><span>横屏可以完整看到句子、录音和成长进度。</span></div></div>
+
+  <script>
+    const $ = (selector) => document.querySelector(selector);
+    const themeImages = {
+      "basic-expressions": "/core-icons/Animal/pig.webp",
+      "actions-and-commands": "/core-icons/Tool/pickaxe.webp",
+      "sentence-expansion": "/core-icons/Tool/chest.webp",
+      "questions-and-communication": "/core-icons/Material/book.webp",
+      "advanced-expressions": "/core-icons/Material/diamond.webp"
+    };
+    const state = {
+      themes: [], chapterIndex: 0, phraseIndex: 0, progress: null,
+      micState: "idle", stream: null, audioContext: null, source: null,
+      processor: null, analyser: null, chunks: [], sampleRate: 48000,
+      recordStartedAt: 0, recordTimerId: null, maxTimerId: null, animationId: null,
+      activeAudio: null
+    };
+
+    async function api(url, options = {}) {
+      const response = await fetch(url, options);
+      if (response.status === 401) {
+        location.href = `/login?next=${encodeURIComponent("/speaking")}`;
+        throw new Error("请先登录");
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(data.error || "请求失败，请稍后重试");
+        error.code = data.code || "REQUEST_FAILED";
+        error.eligibility = data.eligibility;
+        throw error;
+      }
+      return data;
+    }
+
+    function activeTheme() { return state.themes[state.chapterIndex]; }
+    function activePhrase() { return activeTheme()?.items[state.phraseIndex]; }
+    function percent(value, total) { return total ? Math.min(100, Math.round(value / total * 100)) : 0; }
+    function setRecordMessage(text, error = false) {
+      $("#recordState").textContent = text;
+      $("#recordState").classList.toggle("error-text", error);
+    }
+    function renderEligibility(data) {
+      $("#loadingScreen").hidden = true;
+      $("#lockedScreen").hidden = false;
+      $("#masteredWords").textContent = data.masteredWords;
+      $("#requiredWords").textContent = data.requiredWords;
+      $("#remainingWords").textContent = data.remainingWords;
+      $("#unlockPercent").textContent = `${data.percent}%`;
+      $("#unlockBar").style.width = `${Math.min(100, data.percent)}%`;
+      const messages = {
+        COURSE_LOCKED: "口语测评只对英语主课程用户开放。",
+        TRIAL_EXPIRED: "体验已到期，请联系管理员后继续学习。",
+        ACCOUNT_DISABLED: "账号已被禁用，请联系管理员。",
+        PROGRESS_REQUIRED: `掌握 ${data.requiredWords} 个英语单词后即可开启口语测评。`
+      };
+      $("#lockMessage").textContent = messages[data.reason] || messages.PROGRESS_REQUIRED;
+    }
+
+    function renderChapters() {
+      $("#chapterList").innerHTML = state.themes.map((theme, index) => {
+        const mastered = theme.items.filter((item) => item.mastered).length;
+        return `<button class="chapter-button ${index === state.chapterIndex ? "active" : ""}" data-chapter="${index}" type="button"><img src="${themeImages[theme.id] || themeImages["basic-expressions"]}" alt=""><span><strong>${theme.title}</strong><small>${theme.subtitle} · ${mastered}/20 三星</small></span></button>`;
+      }).join("");
+    }
+
+    function renderPhrase() {
+      const theme = activeTheme();
+      const phrase = activePhrase();
+      if (!theme || !phrase) return;
+      $("#phrasePosition").textContent = `${theme.title} · 第 ${state.phraseIndex + 1} / ${theme.items.length} 句`;
+      $("#phraseEnglish").textContent = phrase.english;
+      $("#phraseChinese").textContent = phrase.chinese;
+      $("#phraseVisual").src = themeImages[theme.id] || themeImages["basic-expressions"];
+      $("#phraseVisual").alt = `${theme.title}练习图标`;
+      $("#resultPanel").hidden = true;
+      setRecordMessage(phrase.mastered ? `历史最佳 ${phrase.bestScore} 分 · 已三星掌握` : phrase.attempts ? `历史最佳 ${phrase.bestScore} 分` : "点击按钮，准备跟读");
+      $("#recordTimer").textContent = "00:00";
+      renderChapters();
+    }
+
+    function renderProgress(progress) {
+      state.progress = progress;
+      $("#attemptedCount").textContent = progress.attemptedPhrases;
+      $("#masteredCount").textContent = progress.masteredPhrases;
+      $("#averageScore").textContent = progress.averageBestScore;
+      $("#badgeCount").textContent = progress.badges.length;
+      $("#todayRemaining").textContent = progress.todayRemaining;
+      $("#dailyBar").style.width = `${percent(progress.todayUsed, progress.todayLimit)}%`;
+      $("#badgeList").innerHTML = progress.badges.length
+        ? progress.badges.map((badge) => `<span class="badge">${badge.title}</span>`).join("")
+        : '<span class="muted">完成每章20句三星挑战即可获得</span>';
+    }
+
+    async function boot() {
+      try {
+        const eligibility = await api("/api/speaking/eligibility");
+        if (!eligibility.canAssess) return renderEligibility(eligibility);
+        const [phraseData, progress] = await Promise.all([api("/api/speaking/phrases"), api("/api/speaking/progress")]);
+        state.themes = phraseData.themes;
+        const firstOpenTheme = state.themes.findIndex((theme) => theme.items.some((item) => !item.mastered));
+        state.chapterIndex = firstOpenTheme >= 0 ? firstOpenTheme : 0;
+        const firstOpenPhrase = activeTheme().items.findIndex((item) => !item.mastered);
+        state.phraseIndex = firstOpenPhrase >= 0 ? firstOpenPhrase : 0;
+        $("#loadingScreen").hidden = true;
+        $("#speakingWorkspace").hidden = false;
+        renderProgress(progress);
+        renderPhrase();
+      } catch (error) {
+        $("#loadingScreen").innerHTML = `<h1>暂时无法打开口语测评</h1><p class="error-text">${error.message}</p><a class="pixel-button" href="/">返回单词学习</a>`;
+      }
+    }
+
+    function movePhrase(step) {
+      if (state.micState !== "idle") return;
+      const theme = activeTheme();
+      state.phraseIndex = (state.phraseIndex + step + theme.items.length) % theme.items.length;
+      renderPhrase();
+    }
+
+    async function playStandardAudio() {
+      const phrase = activePhrase();
+      if (!phrase) return;
+      try {
+        state.activeAudio?.pause();
+        const audio = new Audio(`/api/speaking/phrases/${phrase.id}/audio`);
+        state.activeAudio = audio;
+        setRecordMessage("正在播放标准音...");
+        audio.addEventListener("ended", () => setRecordMessage("现在轮到你跟读了"), { once: true });
+        audio.addEventListener("error", () => setRecordMessage("标准音加载失败，请稍后重试", true), { once: true });
+        await audio.play();
+      } catch {
+        setRecordMessage("标准音加载失败，请点击重试", true);
+      }
+    }
+
+    function secureMicrophoneAvailable() {
+      const local = ["localhost", "127.0.0.1"].includes(location.hostname);
+      return (window.isSecureContext || local) && navigator.mediaDevices?.getUserMedia;
+    }
+
+    function setMicState(next) {
+      state.micState = next;
+      const button = $("#micBtn");
+      button.classList.toggle("recording", next === "recording");
+      button.classList.toggle("countdown", next === "countdown");
+      button.disabled = next === "submitting";
+      button.textContent = next === "recording" ? "结束录音" : next === "countdown" ? "准备..." : next === "submitting" ? "评分中" : "开始录音";
+    }
+
+    async function beginRecordingFlow() {
+      if (!secureMicrophoneAvailable()) {
+        setRecordMessage("麦克风评测必须使用 https://eduplayer.top，并允许浏览器麦克风权限", true);
+        return;
+      }
+      try {
+        setMicState("countdown");
+        setRecordMessage("正在申请麦克风权限...");
+        state.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        state.audioContext = new AudioContextClass();
+        await state.audioContext.resume();
+        for (let count = 3; count >= 1; count -= 1) {
+          setRecordMessage(`${count} 秒后开始，请准备`);
+          $("#micBtn").textContent = String(count);
+          await new Promise((resolve) => setTimeout(resolve, 700));
+        }
+        if (state.micState !== "countdown") return cleanupRecording();
+        startCapture();
+      } catch (error) {
+        cleanupRecording();
+        setRecordMessage(error.name === "NotAllowedError" ? "没有获得麦克风权限，请在浏览器设置中允许后重试" : "麦克风启动失败，请检查设备后重试", true);
+      }
+    }
+
+    function startCapture() {
+      const context = state.audioContext;
+      state.sampleRate = context.sampleRate;
+      state.chunks = [];
+      state.source = context.createMediaStreamSource(state.stream);
+      state.analyser = context.createAnalyser();
+      state.analyser.fftSize = 1024;
+      state.processor = context.createScriptProcessor(4096, 1, 1);
+      const silent = context.createGain();
+      silent.gain.value = 0;
+      state.processor.onaudioprocess = (event) => {
+        if (state.micState === "recording") state.chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+      };
+      state.source.connect(state.analyser);
+      state.source.connect(state.processor);
+      state.processor.connect(silent);
+      silent.connect(context.destination);
+      state.recordStartedAt = performance.now();
+      setMicState("recording");
+      setRecordMessage("正在录音，请读出英文句子");
+      state.recordTimerId = setInterval(updateTimer, 100);
+      state.maxTimerId = setTimeout(() => finishRecording(), 15000);
+      drawWaveform();
+    }
+
+    function updateTimer() {
+      const seconds = Math.min(15, (performance.now() - state.recordStartedAt) / 1000);
+      $("#recordTimer").textContent = `00:${String(Math.floor(seconds)).padStart(2, "0")}`;
+    }
+
+    function drawWaveform() {
+      const canvas = $("#waveCanvas");
+      const context = canvas.getContext("2d");
+      const data = new Uint8Array(state.analyser?.fftSize || 1024);
+      if (state.analyser) state.analyser.getByteTimeDomainData(data); else data.fill(128);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.strokeStyle = "#247b3a";
+      context.lineWidth = 3;
+      context.beginPath();
+      data.forEach((value, index) => {
+        const x = index / (data.length - 1) * canvas.width;
+        const y = value / 255 * canvas.height;
+        if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
+      });
+      context.stroke();
+      if (state.micState === "recording") state.animationId = requestAnimationFrame(drawWaveform);
+    }
+
+    function pcmFromChunks(chunks, sourceRate) {
+      const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      const input = new Float32Array(total);
+      let offset = 0;
+      chunks.forEach((chunk) => { input.set(chunk, offset); offset += chunk.length; });
+      const targetRate = 16000;
+      const outputLength = Math.min(240000, Math.floor(input.length * targetRate / sourceRate));
+      const buffer = new ArrayBuffer(outputLength * 2);
+      const view = new DataView(buffer);
+      const ratio = sourceRate / targetRate;
+      for (let index = 0; index < outputLength; index += 1) {
+        const start = Math.floor(index * ratio);
+        const end = Math.max(start + 1, Math.floor((index + 1) * ratio));
+        let sum = 0;
+        for (let cursor = start; cursor < end && cursor < input.length; cursor += 1) sum += input[cursor];
+        const sample = Math.max(-1, Math.min(1, sum / (end - start)));
+        view.setInt16(index * 2, sample < 0 ? sample * 32768 : sample * 32767, true);
+      }
+      return buffer;
+    }
+
+    function releaseAudioResources() {
+      clearInterval(state.recordTimerId);
+      clearTimeout(state.maxTimerId);
+      cancelAnimationFrame(state.animationId);
+      try { state.processor?.disconnect(); } catch {}
+      try { state.source?.disconnect(); } catch {}
+      state.stream?.getTracks().forEach((track) => track.stop());
+      state.audioContext?.close().catch(() => {});
+      state.stream = null; state.audioContext = null; state.source = null;
+      state.processor = null; state.analyser = null;
+    }
+
+    function cleanupRecording() {
+      releaseAudioResources();
+      state.chunks = [];
+      setMicState("idle");
+      drawWaveform();
+    }
+
+    async function finishRecording() {
+      if (state.micState !== "recording") return;
+      const duration = (performance.now() - state.recordStartedAt) / 1000;
+      const chunks = state.chunks;
+      const sampleRate = state.sampleRate;
+      releaseAudioResources();
+      state.chunks = [];
+      if (duration < .5 || !chunks.length) {
+        setMicState("idle");
+        return setRecordMessage("录音太短，请完整读出句子后再结束", true);
+      }
+      setMicState("submitting");
+      setRecordMessage("正在评测发音，请稍候...");
+      try {
+        const pcm = pcmFromChunks(chunks, sampleRate);
+        const response = await fetch(`/api/speaking/assess/${activePhrase().id}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: pcm });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) return location.href = `/login?next=${encodeURIComponent("/speaking")}`;
+        if (!response.ok) throw new Error(data.error || "本次评测未完成，请稍后重试");
+        applyAssessment(data);
+      } catch (error) {
+        setRecordMessage(error.message, true);
+      } finally {
+        setMicState("idle");
+      }
+    }
+
+    function applyAssessment(data) {
+      const phrase = activePhrase();
+      phrase.attempts += 1;
+      phrase.bestScore = Math.max(phrase.bestScore, data.score);
+      phrase.stars = Math.max(phrase.stars, data.stars);
+      phrase.mastered = phrase.mastered || data.passed;
+      renderProgress(data.progress);
+      renderChapters();
+      $("#resultScore").textContent = data.score;
+      $("#resultStars").textContent = "★".repeat(data.stars) + "☆".repeat(3 - data.stars);
+      $("#resultTitle").textContent = data.passed ? "三星掌握！" : data.stars >= 2 ? "就差一点了！" : "勇敢开口很棒！";
+      $("#resultMessage").textContent = data.encouragement;
+      $("#resultPanel").hidden = false;
+      setRecordMessage(`本次得分 ${data.score}`);
+    }
+
+    function handleMicClick() {
+      if (state.micState === "recording") return finishRecording();
+      if (state.micState !== "idle") return;
+      if (localStorage.getItem("speakingMicNoticeAccepted") !== "1") {
+        $("#privacyModal").hidden = false;
+        return;
+      }
+      beginRecordingFlow();
+    }
+
+    const showChinese = localStorage.getItem("speakingShowChinese") !== "false";
+    document.body.dataset.showChinese = String(showChinese);
+    $("#chineseToggle").textContent = showChinese ? "隐藏中文" : "显示中文";
+    $("#chineseToggle").addEventListener("click", () => {
+      const next = document.body.dataset.showChinese !== "true";
+      document.body.dataset.showChinese = String(next);
+      localStorage.setItem("speakingShowChinese", String(next));
+      $("#chineseToggle").textContent = next ? "隐藏中文" : "显示中文";
+    });
+    $("#listenBtn").addEventListener("click", playStandardAudio);
+    $("#micBtn").addEventListener("click", handleMicClick);
+    $("#prevPhraseBtn").addEventListener("click", () => movePhrase(-1));
+    $("#nextPhraseBtn").addEventListener("click", () => movePhrase(1));
+    $("#retryBtn").addEventListener("click", () => { $("#resultPanel").hidden = true; handleMicClick(); });
+    $("#resultNextBtn").addEventListener("click", () => movePhrase(1));
+    $("#chapterList").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-chapter]");
+      if (!button || state.micState !== "idle") return;
+      state.chapterIndex = Number(button.dataset.chapter);
+      const firstOpen = activeTheme().items.findIndex((item) => !item.mastered);
+      state.phraseIndex = firstOpen >= 0 ? firstOpen : 0;
+      renderPhrase();
+    });
+    $("#privacyCancelBtn").addEventListener("click", () => { $("#privacyModal").hidden = true; });
+    $("#privacyConfirmBtn").addEventListener("click", () => {
+      localStorage.setItem("speakingMicNoticeAccepted", "1");
+      $("#privacyModal").hidden = true;
+      beginRecordingFlow();
+    });
+    window.addEventListener("pagehide", cleanupRecording);
+    boot();
+  </script>
+</body>
+</html>

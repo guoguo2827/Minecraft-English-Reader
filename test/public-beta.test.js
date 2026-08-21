@@ -40,7 +40,7 @@ process.env.ADMIN_USERNAME = "admin";
 process.env.ADMIN_PASSWORD = "AdminPass123";
 process.env.ADMIN_PHONE = "13800000000";
 
-const { app, db, sessionStore } = require("../server");
+const { app, db, sessionStore, helpers } = require("../server");
 let server;
 let baseUrl;
 let adminCookie;
@@ -89,7 +89,9 @@ test("incremental migration preserves existing user and adds public beta schema"
     .get("2026-08-10-admin-dashboard-v1"));
   assert.ok(db.prepare("SELECT version FROM schema_migrations WHERE version = ?")
     .get("2026-08-12-theme-single-pass-v1"));
-  for (const table of ["admin_audit_logs", "registration_applications", "referral_links", "friendships", "friend_pk_bonus_events", "user_login_days"]) {
+  assert.ok(db.prepare("SELECT version FROM schema_migrations WHERE version = ?")
+    .get("2026-08-21-speaking-assessment-v1"));
+  for (const table of ["admin_audit_logs", "registration_applications", "referral_links", "friendships", "friend_pk_bonus_events", "user_login_days", "speaking_eligibility", "speaking_phrase_progress", "speaking_attempts", "speaking_theme_badges"]) {
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
   }
   assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_user_login_days_date'").get());
@@ -524,8 +526,62 @@ test("disabled accounts receive a stable API error code", async () => {
   assert.equal(filteredPayload.items[0].phone, "13700000002");
 });
 
+test("speaking course unlocks at 80 percent and stays unlocked", async () => {
+  const legacy = db.prepare("SELECT * FROM users WHERE phone = ?").get("13900000001");
+  db.prepare("DELETE FROM speaking_eligibility WHERE user_id = ?").run(legacy.id);
+  db.prepare("DELETE FROM word_progress WHERE user_id = ?").run(legacy.id);
+  const response = await fetch(`${baseUrl}/api/themes`, { headers: { Cookie: adminCookie } });
+  const payload = await response.json();
+  const words = payload.themes.flatMap((theme) => theme.items.map((item) => ({ themeId: theme.id, word: item.word })));
+  const required = Math.ceil(words.length * .8);
+  const insert = db.prepare(`
+    INSERT INTO word_progress (user_id, theme_id, word, correct_count, mastery_status, last_studied_at)
+    VALUES (?, ?, ?, 1, 'mastered', ?)
+  `);
+  db.transaction((items) => items.forEach((item) => insert.run(legacy.id, item.themeId, item.word, new Date().toISOString())))(words.slice(0, required - 1));
+  const locked = helpers.speakingEligibility(legacy, { persist: false });
+  assert.equal(locked.qualified, false);
+  assert.equal(locked.requiredWords, required);
+  insert.run(legacy.id, words[required - 1].themeId, words[required - 1].word, new Date().toISOString());
+  const unlocked = helpers.speakingEligibility(legacy);
+  assert.equal(unlocked.qualified, true);
+  assert.ok(db.prepare("SELECT unlocked_at FROM speaking_eligibility WHERE user_id = ?").get(legacy.id));
+  db.prepare("DELETE FROM word_progress WHERE user_id = ?").run(legacy.id);
+  assert.equal(helpers.speakingEligibility(legacy, { persist: false }).qualified, true);
+});
+
+test("speaking phrase data, scores and rewards stay isolated", () => {
+  const items = helpers.speakingThemes.flatMap((theme) => theme.items);
+  assert.equal(helpers.speakingThemes.length, 5);
+  assert.equal(items.length, 100);
+  assert.equal(new Set(items.map((item) => item.id)).size, 100);
+  assert.ok(items.every((item) => item.english.trim().split(/\s+/).length <= 30));
+  assert.equal(helpers.speakingStars(80, .8), 3);
+  assert.equal(helpers.speakingStars(80, .79), 2);
+  assert.equal(helpers.normalizeSoeResult({ SuggestedScore: 79, PronCompletion: 1 }).passed, false);
+
+  const user = db.prepare("SELECT id FROM users WHERE phone = ?").get("13900000001");
+  const rewardCount = db.prepare("SELECT COUNT(*) AS count FROM reward_events WHERE user_id = ?").get(user.id).count;
+  const attempt = (requestId, result) => {
+    db.prepare("INSERT INTO speaking_attempts (user_id, phrase_id, request_id, status, created_at) VALUES (?, 1, ?, 'processing', ?)")
+      .run(user.id, requestId, new Date().toISOString());
+    return helpers.recordSpeakingResult(user.id, 1, requestId, result);
+  };
+  assert.equal(attempt("speaking-test-1", { SuggestedScore: 82, PronAccuracy: 81, PronFluency: .8, PronCompletion: .7 }).stars, 2);
+  assert.equal(attempt("speaking-test-2", { SuggestedScore: 81, PronAccuracy: 80, PronFluency: .8, PronCompletion: .8 }).passed, true);
+  attempt("speaking-test-3", { SuggestedScore: 50, PronAccuracy: 50, PronFluency: .5, PronCompletion: .5 });
+  const progress = db.prepare("SELECT * FROM speaking_phrase_progress WHERE user_id = ? AND phrase_id = 1").get(user.id);
+  assert.equal(progress.attempt_count, 3);
+  assert.equal(progress.best_score, 82);
+  assert.equal(progress.stars, 3);
+  assert.ok(progress.mastered_at);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM reward_events WHERE user_id = ?").get(user.id).count, rewardCount);
+  const columns = db.prepare("PRAGMA table_info(speaking_attempts)").all().map((column) => column.name);
+  assert.equal(columns.some((name) => /audio|blob|recording/i.test(name)), false);
+});
+
 test("main inline page scripts parse", () => {
-  for (const filename of ["index.html", "core-words-cn.html", "admin.html", "friends.html", "register.html", "login.html", "reset-password.html"]) {
+  for (const filename of ["index.html", "core-words-cn.html", "speaking.html", "admin.html", "friends.html", "register.html", "login.html", "reset-password.html"]) {
     const html = fs.readFileSync(path.join(__dirname, "..", "outputs", filename), "utf8");
     const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map((match) => match[1]).filter(Boolean);
     assert.ok(scripts.length, `${filename} should contain an inline script`);

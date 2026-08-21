@@ -32,6 +32,16 @@ const auditRetentionDays = 90;
 const inviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const passwordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 const dailyExpLimit = 150;
+const speakingUnlockPercent = 80;
+const speakingDailyLimit = positiveInt(process.env.TENCENT_SOE_DAILY_LIMIT, 20);
+const speakingPhraseDailyLimit = positiveInt(process.env.TENCENT_SOE_PHRASE_DAILY_LIMIT, 5);
+const speakingPackageTotal = positiveInt(process.env.TENCENT_SOE_PACKAGE_TOTAL, 10000);
+const speakingPackageReserve = Math.min(
+  speakingPackageTotal,
+  positiveInt(process.env.TENCENT_SOE_PACKAGE_RESERVE, 500)
+);
+const speakingEnabled = process.env.TENCENT_SOE_ENABLED === "true";
+const speakingInFlight = new Set();
 
 if (process.env.NODE_ENV === "production" && sessionSecret.length < 32) {
   throw new Error("SESSION_SECRET must contain at least 32 characters in production");
@@ -499,6 +509,73 @@ function applySinglePassQuizMigration() {
   })();
 }
 
+function applySpeakingMigration() {
+  const version = "2026-08-21-speaking-assessment-v1";
+  if (migrationApplied(version)) return;
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS speaking_eligibility (
+        user_id INTEGER PRIMARY KEY,
+        unlocked_at TEXT NOT NULL,
+        mastered_words_snapshot INTEGER NOT NULL,
+        total_words_snapshot INTEGER NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS speaking_phrase_progress (
+        user_id INTEGER NOT NULL,
+        phrase_id INTEGER NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        best_score REAL NOT NULL DEFAULT 0,
+        best_accuracy REAL NOT NULL DEFAULT 0,
+        best_fluency REAL NOT NULL DEFAULT 0,
+        best_completion REAL NOT NULL DEFAULT 0,
+        stars INTEGER NOT NULL DEFAULT 0,
+        mastered_at TEXT,
+        last_attempt_at TEXT NOT NULL,
+        PRIMARY KEY(user_id, phrase_id),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS speaking_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        phrase_id INTEGER NOT NULL,
+        request_id TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL,
+        score REAL,
+        accuracy REAL,
+        fluency REAL,
+        completion REAL,
+        passed INTEGER NOT NULL DEFAULT 0,
+        error_code TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        finished_at TEXT,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS speaking_theme_badges (
+        user_id INTEGER NOT NULL,
+        theme_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(user_id, theme_id),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_speaking_attempts_user_date
+        ON speaking_attempts(user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_speaking_attempts_phrase_date
+        ON speaking_attempts(user_id, phrase_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_speaking_attempts_status
+        ON speaking_attempts(status, created_at);
+      CREATE INDEX IF NOT EXISTS idx_speaking_progress_mastered
+        ON speaking_phrase_progress(user_id, mastered_at);
+    `);
+    markMigration(version);
+  })();
+}
+
 function initDb() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -712,6 +789,7 @@ function initDb() {
   applyThreeCorrectReviewMigration();
   applyAdminDashboardMigration();
   applySinglePassQuizMigration();
+  applySpeakingMigration();
 }
 
 function ensureAdmin() {
@@ -770,10 +848,38 @@ function loadChineseThemes() {
   }));
 }
 
+function loadSpeakingThemes() {
+  const source = fs.readFileSync(path.join(publicDir, "minecraft-phrases-data.js"), "utf8");
+  const sandbox = { window: {} };
+  vm.runInNewContext(source, sandbox, { filename: "minecraft-phrases-data.js" });
+  const sourceThemes = sandbox.window.MINECRAFT_PHRASE_THEMES;
+  if (!Array.isArray(sourceThemes)) throw new Error("Cannot find speaking phrase themes");
+  const seenIds = new Set();
+  return sourceThemes.map((theme) => ({
+    id: String(theme.id),
+    title: String(theme.title),
+    subtitle: String(theme.subtitle || ""),
+    items: theme.items.map((item) => {
+      const id = Number(item.id);
+      const english = String(item.english || "").trim();
+      const chinese = String(item.chinese || "").trim();
+      if (!Number.isInteger(id) || seenIds.has(id) || !english || !chinese) {
+        throw new Error(`Invalid speaking phrase item: ${item.id}`);
+      }
+      if (english.split(/\s+/).length > 30) throw new Error(`Speaking phrase ${id} exceeds 30 words`);
+      seenIds.add(id);
+      return { id, english, chinese, themeId: String(theme.id) };
+    })
+  }));
+}
+
 const themes = loadThemes();
 const themeMap = new Map(themes.map((theme) => [theme.id, theme]));
 const chineseThemes = loadChineseThemes();
 const chineseThemeMap = new Map(chineseThemes.map((theme) => [theme.id, theme]));
+const speakingThemes = loadSpeakingThemes();
+const speakingItems = speakingThemes.flatMap((theme) => theme.items);
+const speakingItemMap = new Map(speakingItems.map((item) => [item.id, item]));
 
 const freeThemeIds = {
   english: new Set(["animals", "tools", "concepts"]),
@@ -921,6 +1027,7 @@ const registerPhoneCounter = createWindowCounter({ windowMs: 24 * 60 * 60 * 1000
 const ttsUserCounter = createWindowCounter({ windowMs: 10 * 60 * 1000, max: 180 });
 const ttsIpCounter = createWindowCounter({ windowMs: 10 * 60 * 1000, max: 300 });
 const ttsGenerationCounter = createWindowCounter({ windowMs: 60 * 60 * 1000, max: 120 });
+const speakingIpCounter = createWindowCounter({ windowMs: 10 * 60 * 1000, max: 60 });
 
 const limitLoginIp = rateLimitMiddleware({
   counter: loginIpCounter,
@@ -963,6 +1070,12 @@ const limitTtsIp = rateLimitMiddleware({
   key: (req) => `tts-ip:${limiterHash(req.ip)}`,
   code: "TTS_IP_RATE_LIMITED",
   message: "当前网络的语音请求过于频繁，请稍后再试"
+});
+const limitSpeakingIp = rateLimitMiddleware({
+  counter: speakingIpCounter,
+  key: (req) => `speaking-ip:${limiterHash(req.ip)}`,
+  code: "SPEAKING_IP_RATE_LIMITED",
+  message: "当前网络的口语评测请求过于频繁，请稍后再试"
 });
 
 function publicUser(user) {
@@ -1017,7 +1130,7 @@ function requireAuth(req, res, next) {
 
 function requirePasswordReadyPage(req, res, next) {
   const user = currentUser(req);
-  const returnPath = ["/progress", "/chinese", "/chinese/progress", "/friends", "/access-status"].includes(req.path) ? req.path : "";
+  const returnPath = ["/progress", "/chinese", "/chinese/progress", "/friends", "/access-status", "/speaking"].includes(req.path) ? req.path : "";
   const suffix = returnPath ? `?next=${encodeURIComponent(returnPath)}` : "";
   if (!user) return res.redirect(`/login${suffix}`);
   if (user.password_reset_required) return res.redirect(`/reset-password${suffix}`);
@@ -1297,6 +1410,283 @@ function progressSummary(userId) {
   totals.completion = totals.totalWords ? Math.round((totals.masteredWords / totals.totalWords) * 100) : 0;
 
   return { totals, themes: themesSummary };
+}
+
+function speakingEligibility(user, options = {}) {
+  const persist = options.persist !== false;
+  const totals = progressSummary(user.id).totals;
+  const requiredWords = Math.ceil(totals.totalWords * speakingUnlockPercent / 100);
+  let eligibility = db.prepare("SELECT * FROM speaking_eligibility WHERE user_id = ?").get(user.id);
+  const adminBypass = user.role === "admin";
+  const reachedRequirement = totals.masteredWords >= requiredWords;
+
+  if (!eligibility && !adminBypass && user.primary_course === "english" && reachedRequirement && persist) {
+    db.prepare(`
+      INSERT OR IGNORE INTO speaking_eligibility (
+        user_id, unlocked_at, mastered_words_snapshot, total_words_snapshot
+      ) VALUES (?, ?, ?, ?)
+    `).run(user.id, now(), totals.masteredWords, totals.totalWords);
+    eligibility = db.prepare("SELECT * FROM speaking_eligibility WHERE user_id = ?").get(user.id);
+  }
+
+  const qualified = adminBypass || Boolean(eligibility) || (user.primary_course === "english" && reachedRequirement);
+  let reason = "";
+  if (user.status !== "active") reason = "ACCOUNT_DISABLED";
+  else if (!adminBypass && user.primary_course !== "english") reason = "COURSE_LOCKED";
+  else if (!adminBypass && userAccessState(user) === "expired") reason = "TRIAL_EXPIRED";
+  else if (!qualified) reason = "PROGRESS_REQUIRED";
+
+  return {
+    qualified,
+    canAssess: qualified && !reason,
+    adminBypass,
+    unlockedAt: eligibility?.unlocked_at || (adminBypass ? "admin" : null),
+    masteredWords: totals.masteredWords,
+    totalWords: totals.totalWords,
+    requiredWords,
+    remainingWords: Math.max(0, requiredWords - totals.masteredWords),
+    percent: totals.totalWords ? Math.floor(totals.masteredWords / totals.totalWords * 100) : 0,
+    reason
+  };
+}
+
+function enforceSpeakingAccess(req, res) {
+  const eligibility = speakingEligibility(req.user);
+  if (eligibility.canAssess) return eligibility;
+  const messages = {
+    ACCOUNT_DISABLED: "账号已被禁用",
+    COURSE_LOCKED: "口语测评只对英语主课程用户开放",
+    TRIAL_EXPIRED: "体验已到期，请联系管理员",
+    PROGRESS_REQUIRED: `掌握英语主课程 ${speakingUnlockPercent}% 的单词后即可解锁`
+  };
+  res.status(403).json({
+    code: "SPEAKING_LOCKED",
+    reason: eligibility.reason,
+    error: messages[eligibility.reason] || "口语测评尚未解锁",
+    eligibility
+  });
+  return null;
+}
+
+function speakingStars(score, completion) {
+  if (score >= 80 && completion >= 0.8) return 3;
+  if (score >= 70) return 2;
+  if (score >= 60) return 1;
+  return 0;
+}
+
+function speakingDateBounds(date = shanghaiDateKey()) {
+  return dateKeyRange(date);
+}
+
+function speakingUsageCount(userId, phraseId = null, date = shanghaiDateKey()) {
+  const bounds = speakingDateBounds(date);
+  const phraseSql = phraseId === null ? "" : " AND phrase_id = ?";
+  const values = phraseId === null
+    ? [userId, bounds.start, bounds.end]
+    : [userId, bounds.start, bounds.end, phraseId];
+  return db.prepare(`
+    SELECT COUNT(*) AS count FROM speaking_attempts
+    WHERE user_id = ? AND created_at >= ? AND created_at < ?${phraseSql}
+  `).get(...values).count;
+}
+
+function speakingPackageUsage() {
+  return db.prepare("SELECT COUNT(*) AS count FROM speaking_attempts").get().count;
+}
+
+function speakingProgressSummary(userId) {
+  const rows = db.prepare("SELECT * FROM speaking_phrase_progress WHERE user_id = ?").all(userId);
+  const attempted = rows.filter((row) => row.attempt_count > 0);
+  const mastered = rows.filter((row) => row.mastered_at);
+  const badges = db.prepare(`
+    SELECT theme_id AS themeId, title, created_at AS createdAt
+    FROM speaking_theme_badges WHERE user_id = ? ORDER BY created_at
+  `).all(userId);
+  const todayUsed = speakingUsageCount(userId);
+  const bestScoreTotal = attempted.reduce((sum, row) => sum + Number(row.best_score || 0), 0);
+  return {
+    totalPhrases: speakingItems.length,
+    attemptedPhrases: attempted.length,
+    masteredPhrases: mastered.length,
+    averageBestScore: attempted.length ? Math.round(bestScoreTotal / attempted.length) : 0,
+    todayUsed,
+    todayLimit: speakingDailyLimit,
+    todayRemaining: Math.max(0, speakingDailyLimit - todayUsed),
+    badges
+  };
+}
+
+function speakingThemesForUser(userId) {
+  const progress = new Map(db.prepare(`
+    SELECT phrase_id, attempt_count, best_score, stars, mastered_at, last_attempt_at
+    FROM speaking_phrase_progress WHERE user_id = ?
+  `).all(userId).map((row) => [row.phrase_id, row]));
+  return speakingThemes.map((theme) => ({
+    id: theme.id,
+    title: theme.title,
+    subtitle: theme.subtitle,
+    items: theme.items.map((item) => {
+      const row = progress.get(item.id);
+      return {
+        id: item.id,
+        english: item.english,
+        chinese: item.chinese,
+        attempts: row?.attempt_count || 0,
+        bestScore: Math.round(row?.best_score || 0),
+        stars: row?.stars || 0,
+        mastered: Boolean(row?.mastered_at),
+        lastAttemptAt: row?.last_attempt_at || null
+      };
+    })
+  }));
+}
+
+function grantSpeakingBadges(userId) {
+  const created = [];
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO speaking_theme_badges (user_id, theme_id, title, created_at)
+    VALUES (?, ?, ?, ?)
+  `);
+  for (const theme of speakingThemes) {
+    const mastered = db.prepare(`
+      SELECT COUNT(*) AS count FROM speaking_phrase_progress
+      WHERE user_id = ? AND mastered_at IS NOT NULL AND phrase_id IN (${theme.items.map(() => "?").join(",")})
+    `).get(userId, ...theme.items.map((item) => item.id)).count;
+    if (mastered === theme.items.length) {
+      const result = insert.run(userId, theme.id, `${theme.title}口语徽章`, now());
+      if (result.changes) created.push({ themeId: theme.id, title: `${theme.title}口语徽章` });
+    }
+  }
+  const allMastered = db.prepare(`
+    SELECT COUNT(*) AS count FROM speaking_phrase_progress
+    WHERE user_id = ? AND mastered_at IS NOT NULL
+  `).get(userId).count;
+  if (allMastered >= speakingItems.length) {
+    const result = insert.run(userId, "all", "方块口语大师", now());
+    if (result.changes) created.push({ themeId: "all", title: "方块口语大师" });
+  }
+  return created;
+}
+
+function normalizeSoeResult(raw) {
+  let result = raw;
+  if (typeof result === "string") {
+    try { result = JSON.parse(result); } catch { result = {}; }
+  }
+  const score = Math.max(0, Math.min(100, Number(result?.SuggestedScore || 0)));
+  const accuracy = Math.max(0, Math.min(100, Number(result?.PronAccuracy || 0)));
+  const fluency = Math.max(0, Math.min(1, Number(result?.PronFluency || 0)));
+  const completion = Math.max(0, Math.min(1, Number(result?.PronCompletion || 0)));
+  const passed = score >= 80 && completion >= 0.8;
+  return { score, accuracy, fluency, completion, passed, stars: speakingStars(score, completion) };
+}
+
+function recordSpeakingResult(userId, phraseId, requestId, rawResult) {
+  const result = normalizeSoeResult(rawResult);
+  const timestamp = now();
+  return db.transaction(() => {
+    db.prepare(`
+      UPDATE speaking_attempts SET status = 'succeeded', score = ?, accuracy = ?, fluency = ?,
+        completion = ?, passed = ?, finished_at = ? WHERE request_id = ? AND user_id = ?
+    `).run(result.score, result.accuracy, result.fluency, result.completion, result.passed ? 1 : 0, timestamp, requestId, userId);
+    db.prepare(`
+      INSERT INTO speaking_phrase_progress (
+        user_id, phrase_id, attempt_count, best_score, best_accuracy, best_fluency,
+        best_completion, stars, mastered_at, last_attempt_at
+      ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, phrase_id) DO UPDATE SET
+        attempt_count = speaking_phrase_progress.attempt_count + 1,
+        best_accuracy = CASE WHEN excluded.best_score > speaking_phrase_progress.best_score THEN excluded.best_accuracy ELSE speaking_phrase_progress.best_accuracy END,
+        best_fluency = CASE WHEN excluded.best_score > speaking_phrase_progress.best_score THEN excluded.best_fluency ELSE speaking_phrase_progress.best_fluency END,
+        best_completion = CASE WHEN excluded.best_score > speaking_phrase_progress.best_score THEN excluded.best_completion ELSE speaking_phrase_progress.best_completion END,
+        best_score = MAX(speaking_phrase_progress.best_score, excluded.best_score),
+        stars = MAX(speaking_phrase_progress.stars, excluded.stars),
+        mastered_at = COALESCE(speaking_phrase_progress.mastered_at, excluded.mastered_at),
+        last_attempt_at = excluded.last_attempt_at
+    `).run(
+      userId, phraseId, result.score, result.accuracy, result.fluency,
+      result.completion, result.stars, result.passed ? timestamp : null, timestamp
+    );
+    const badges = grantSpeakingBadges(userId);
+    return { ...result, badges, progress: speakingProgressSummary(userId) };
+  })();
+}
+
+function buildSoeWebSocketUrl(referenceText, voiceId = crypto.randomUUID()) {
+  const appId = String(process.env.TENCENT_SOE_APP_ID || "").trim();
+  const secretId = String(process.env.TENCENT_SECRET_ID || "").trim();
+  const secretKey = String(process.env.TENCENT_SECRET_KEY || "").trim();
+  if (!appId || !secretId || !secretKey) throw new Error("Tencent SOE credentials are not configured");
+  const timestamp = Math.floor(Date.now() / 1000);
+  const params = {
+    eval_mode: 1,
+    expired: timestamp + 3600,
+    nonce: crypto.randomInt(100000000, 999999999),
+    rec_mode: 1,
+    ref_text: referenceText,
+    score_coeff: "1.0",
+    secretid: secretId,
+    sentence_info_enabled: 0,
+    server_engine_type: "16k_en",
+    text_mode: 0,
+    timestamp,
+    voice_format: 0,
+    voice_id: voiceId
+  };
+  const entries = Object.entries(params).sort(([left], [right]) => left.localeCompare(right));
+  const signingQuery = entries.map(([key, value]) => `${key}=${value}`).join("&");
+  const signingText = `soe.cloud.tencent.com/soe/api/${appId}?${signingQuery}`;
+  const signature = crypto.createHmac("sha1", secretKey).update(signingText).digest("base64");
+  const requestQuery = entries
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .concat(`signature=${encodeURIComponent(signature)}`)
+    .join("&");
+  return { url: `wss://soe.cloud.tencent.com/soe/api/${appId}?${requestQuery}`, voiceId };
+}
+
+function assessSpeakingPcm(referenceText, pcmBuffer) {
+  if (typeof globalThis.WebSocket !== "function") {
+    return Promise.reject(new Error("Node.js WebSocket client is unavailable"));
+  }
+  const { url } = buildSoeWebSocketUrl(referenceText);
+  return new Promise((resolve, reject) => {
+    const socket = new globalThis.WebSocket(url);
+    let settled = false;
+    let audioSent = false;
+    let latestResult = null;
+    const timeout = setTimeout(() => finish(new Error("Tencent SOE request timed out")), 30000);
+    function finish(error, result) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try { socket.close(); } catch {}
+      if (error) reject(error); else resolve(result);
+    }
+    socket.addEventListener("open", () => {
+      if (audioSent || settled) return;
+      audioSent = true;
+      socket.send(pcmBuffer);
+      socket.send(JSON.stringify({ type: "end" }));
+    });
+    socket.addEventListener("error", () => finish(new Error("Tencent SOE connection failed")));
+    socket.addEventListener("close", () => {
+      if (!settled) finish(new Error("Tencent SOE connection closed before final result"));
+    });
+    socket.addEventListener("message", (event) => {
+      let message;
+      try { message = JSON.parse(String(event.data)); } catch { return; }
+      if (Number(message.code || 0) !== 0) {
+        finish(new Error(message.message || `Tencent SOE error ${message.code}`));
+        return;
+      }
+      if (message.result !== undefined) latestResult = message.result;
+      if (Number(message.final || 0) === 1) {
+        if (!latestResult) finish(new Error("Tencent SOE returned no assessment result"));
+        else finish(null, latestResult);
+      }
+    });
+  });
 }
 
 function todayKey() {
@@ -2293,7 +2683,7 @@ app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "camera=(), geolocation=(), payment=()");
+  res.setHeader("Permissions-Policy", "camera=(), geolocation=(), microphone=(self), payment=()");
   return next();
 });
 app.use(session({
@@ -2323,6 +2713,7 @@ app.get("/reset-password", requirePageAuth, (req, res) => {
   return res.sendFile(path.join(publicDir, "reset-password.html"));
 });
 app.get("/progress", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "progress.html")));
+app.get("/speaking", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "speaking.html")));
 app.get("/", requireStudyPage("english"), (req, res) => res.sendFile(path.join(publicDir, "index.html")));
 app.get("/chinese", requireStudyPage("chinese"), (req, res) => res.sendFile(path.join(publicDir, "core-words-cn.html")));
 app.get("/chinese/progress", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "chinese-progress.html")));
@@ -2591,6 +2982,129 @@ app.get("/api/tts", requireAuth, limitTtsUser, limitTtsIp, async (req, res) => {
     return res.status(503).json({ code: "TTS_UNAVAILABLE", error: "腾讯云 TTS 暂不可用", detail: error.message });
   }
 });
+
+app.get("/api/speaking/eligibility", requireAuth, (req, res) => {
+  return res.json(speakingEligibility(req.user));
+});
+
+app.get("/api/speaking/phrases", requireAuth, (req, res) => {
+  if (!enforceSpeakingAccess(req, res)) return;
+  return res.json({ themes: speakingThemesForUser(req.user.id) });
+});
+
+app.get("/api/speaking/progress", requireAuth, (req, res) => {
+  if (!enforceSpeakingAccess(req, res)) return;
+  return res.json(speakingProgressSummary(req.user.id));
+});
+
+app.get("/api/speaking/phrases/:id/audio", requireAuth, limitTtsUser, limitTtsIp, async (req, res) => {
+  if (!enforceSpeakingAccess(req, res)) return;
+  const phrase = speakingItemMap.get(Number(req.params.id));
+  if (!phrase) return res.status(404).json({ code: "PHRASE_NOT_FOUND", error: "句子不存在" });
+  try {
+    const audio = await ensureTtsAudio(phrase.english, {
+      lang: "en",
+      beforeGenerate: () => {
+        const result = ttsGenerationCounter.consume(`tts-generate:${req.user.id}`);
+        if (!result.allowed) {
+          const error = new Error("新语音生成额度已达到上限，请稍后再试");
+          error.status = 429;
+          error.code = "TTS_GENERATION_RATE_LIMITED";
+          error.retryAfter = result.retryAfter;
+          throw error;
+        }
+      }
+    });
+    res.setHeader("Content-Type", audio.contentType);
+    res.setHeader("X-TTS-Voice-Type", String(getTencentVoiceType("en") ?? "default"));
+    res.setHeader("X-TTS-Cache", audio.cached ? "HIT" : "MISS");
+    res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+    return res.sendFile(audio.filePath);
+  } catch (error) {
+    res.setHeader("Cache-Control", "no-store");
+    if (error.status === 429) {
+      res.setHeader("Retry-After", String(error.retryAfter || 60));
+      return res.status(429).json({ code: error.code, error: error.message, retryAfter: error.retryAfter });
+    }
+    return res.status(503).json({ code: "TTS_UNAVAILABLE", error: "标准音暂不可用，请稍后重试" });
+  }
+});
+
+app.post(
+  "/api/speaking/assess/:phraseId",
+  requireAuth,
+  limitSpeakingIp,
+  express.raw({ type: "application/octet-stream", limit: "512kb" }),
+  async (req, res) => {
+    const eligibility = enforceSpeakingAccess(req, res);
+    if (!eligibility) return;
+    if (!speakingEnabled) {
+      return res.status(503).json({ code: "SOE_UNAVAILABLE", error: "口语评测服务尚未开启" });
+    }
+    const phrase = speakingItemMap.get(Number(req.params.phraseId));
+    if (!phrase) return res.status(404).json({ code: "PHRASE_NOT_FOUND", error: "句子不存在" });
+    if (!Buffer.isBuffer(req.body) || req.body.length < 16000 || req.body.length > 480000 || req.body.length % 2 !== 0) {
+      return res.status(400).json({ code: "INVALID_AUDIO", error: "录音需为0.5至15秒的16kHz单声道PCM音频" });
+    }
+    if (speakingInFlight.has(req.user.id)) {
+      return res.status(409).json({ code: "ASSESSMENT_BUSY", error: "上一条评测仍在处理中" });
+    }
+    const userUsed = speakingUsageCount(req.user.id);
+    if (userUsed >= speakingDailyLimit) {
+      return res.status(429).json({ code: "DAILY_LIMIT_REACHED", error: "今天的口语评测次数已用完" });
+    }
+    const phraseUsed = speakingUsageCount(req.user.id, phrase.id);
+    if (phraseUsed >= speakingPhraseDailyLimit) {
+      return res.status(429).json({ code: "PHRASE_LIMIT_REACHED", error: `这句话今天已经练习${speakingPhraseDailyLimit}次，请明天再试` });
+    }
+    const packageUsed = speakingPackageUsage();
+    const packageLimit = req.user.role === "admin"
+      ? speakingPackageTotal
+      : Math.max(0, speakingPackageTotal - speakingPackageReserve);
+    if (packageUsed >= packageLimit) {
+      return res.status(503).json({ code: "PACKAGE_LIMIT_REACHED", error: "本期口语评测额度已用完" });
+    }
+
+    const requestId = crypto.randomUUID();
+    const createdAt = now();
+    db.prepare(`
+      INSERT INTO speaking_attempts (user_id, phrase_id, request_id, status, created_at)
+      VALUES (?, ?, ?, 'processing', ?)
+    `).run(req.user.id, phrase.id, requestId, createdAt);
+    speakingInFlight.add(req.user.id);
+    try {
+      const rawResult = await assessSpeakingPcm(phrase.english, req.body);
+      const result = recordSpeakingResult(req.user.id, phrase.id, requestId, rawResult);
+      const encouragement = result.stars === 3
+        ? "发音真棒，这句话已掌握！"
+        : result.stars === 2
+          ? "很接近了！放慢一点，再试一次。"
+          : result.stars === 1
+            ? "已经开口了，很棒！再清楚一点。"
+            : "先听一遍标准音，再试一次吧！";
+      return res.json({
+        ok: true,
+        phraseId: phrase.id,
+        score: Math.round(result.score),
+        stars: result.stars,
+        passed: result.passed,
+        encouragement,
+        newBadges: result.badges,
+        progress: result.progress
+      });
+    } catch (error) {
+      db.prepare(`
+        UPDATE speaking_attempts
+        SET status = 'failed', error_code = 'SOE_UNAVAILABLE', finished_at = ?
+        WHERE request_id = ? AND user_id = ?
+      `).run(now(), requestId, req.user.id);
+      console.error("Tencent SOE assessment failed:", error.message);
+      return res.status(503).json({ code: "SOE_UNAVAILABLE", error: "本次评测未完成，请稍后重试" });
+    } finally {
+      speakingInFlight.delete(req.user.id);
+    }
+  }
+);
 
 app.post("/api/quiz/next", requireAuth, (req, res) => {
   try {
@@ -3190,6 +3704,56 @@ app.get("/api/admin/course-summary", requireAdmin, (req, res) => {
   return res.json(adminCourseOverview(course, range));
 });
 
+app.get("/api/admin/speaking-summary", requireAdmin, (req, res) => {
+  const bounds = speakingDateBounds();
+  const today = db.prepare(`
+    SELECT COUNT(*) AS calls,
+           COUNT(DISTINCT user_id) AS activeUsers,
+           SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) AS succeeded,
+           SUM(CASE WHEN status = 'succeeded' AND passed = 1 THEN 1 ELSE 0 END) AS passed,
+           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS errors
+    FROM speaking_attempts WHERE created_at >= ? AND created_at < ?
+  `).get(bounds.start, bounds.end);
+  const total = db.prepare(`
+    SELECT COUNT(*) AS calls,
+           COUNT(DISTINCT user_id) AS activeUsers,
+           SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) AS succeeded,
+           SUM(CASE WHEN status = 'succeeded' AND passed = 1 THEN 1 ELSE 0 END) AS passed,
+           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS errors
+    FROM speaking_attempts
+  `).get();
+  const unlockedUsers = db.prepare("SELECT COUNT(*) AS count FROM speaking_eligibility").get().count;
+  const masteredPhrases = db.prepare("SELECT COUNT(*) AS count FROM speaking_phrase_progress WHERE mastered_at IS NOT NULL").get().count;
+  const badges = db.prepare("SELECT COUNT(*) AS count FROM speaking_theme_badges").get().count;
+  const used = Number(total.calls || 0);
+  const percent = speakingPackageTotal ? Math.min(100, Math.round(used / speakingPackageTotal * 100)) : 100;
+  const warningLevel = percent >= 100 ? "critical" : percent >= 90 ? "danger" : percent >= 70 ? "warning" : "normal";
+  const shape = (row) => ({
+    calls: Number(row.calls || 0),
+    activeUsers: Number(row.activeUsers || 0),
+    succeeded: Number(row.succeeded || 0),
+    passed: Number(row.passed || 0),
+    errors: Number(row.errors || 0),
+    passRate: Number(row.succeeded || 0) ? Math.round(Number(row.passed || 0) / Number(row.succeeded) * 100) : 0
+  });
+  return res.json({
+    enabled: speakingEnabled,
+    configured: Boolean(process.env.TENCENT_SOE_APP_ID && process.env.TENCENT_SECRET_ID && process.env.TENCENT_SECRET_KEY),
+    today: shape(today),
+    total: { ...shape(total), unlockedUsers, masteredPhrases, badges },
+    package: {
+      total: speakingPackageTotal,
+      used,
+      reserve: speakingPackageReserve,
+      normalUserLimit: Math.max(0, speakingPackageTotal - speakingPackageReserve),
+      remaining: Math.max(0, speakingPackageTotal - used),
+      percent,
+      warningLevel
+    },
+    limits: { daily: speakingDailyLimit, phraseDaily: speakingPhraseDailyLimit }
+  });
+});
+
 app.get("/api/admin/users", requireAdmin, (req, res) => {
   const pageSize = Math.min(50, positiveInt(req.query.pageSize, 10));
   const page = positiveInt(req.query.page, 1);
@@ -3515,10 +4079,17 @@ module.exports = {
   sessionStore,
   helpers: {
     allowedThemeIds,
+    normalizeSoeResult,
+    recordSpeakingResult,
     friendStats,
     parseReferralToken,
     referralToken,
     shanghaiDateKey,
+    speakingEligibility,
+    speakingProgressSummary,
+    speakingStars,
+    speakingThemes,
+    speakingUsageCount,
     userAccessState,
     weekRange
   }
