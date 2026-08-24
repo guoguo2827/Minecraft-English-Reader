@@ -3,7 +3,7 @@
 <head>
   <!-- CN_READER_UI_20260712D -->
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Minecraft Chinese Reader</title>
   <style>
     :root {
@@ -686,12 +686,18 @@
     .theme-tab.locked { opacity: .62; cursor: not-allowed; filter: grayscale(.5); }
     .theme-tab.locked .tab-title::after { content: "  Locked"; color: #8b381d; font-size: 11px; }
   </style>
+  <link rel="stylesheet" href="/mobile-learning.css">
+  <script src="/mobile-learning.js" defer></script>
 </head>
-<body data-show-en="true" data-study-mode="learn">
+<body data-show-en="true" data-study-mode="learn" data-mobile-course="chinese">
   <header>
     <div>
       <h1>Minecraft Chinese Reader</h1>
       <p class="subtitle">Tap a card to hear clear Mandarin pronunciation</p>
+    </div>
+    <div class="mobile-header-buttons">
+      <button class="mobile-head-button" type="button" data-mobile-voice-target="#voiceBtn">Voice</button>
+      <button class="mobile-head-button" type="button" data-mobile-menu-trigger aria-expanded="false" aria-label="Open menu">Menu</button>
     </div>
     <div class="top-actions">
       <span class="trial-pill" id="trialStatus"></span>
@@ -751,6 +757,13 @@
       </section>
     </section>
   </main>
+
+  <nav class="mobile-learning-nav" aria-label="Mobile learning navigation">
+    <button type="button" data-mode-button="learn">Study</button>
+    <button type="button" data-mode-button="quiz">Quiz</button>
+    <button type="button" data-mobile-theme-trigger aria-expanded="false">Themes</button>
+  </nav>
+  <button class="mobile-page-backdrop" type="button" data-mobile-backdrop aria-label="Close menu"></button>
 
   <div class="reward-rules-modal" id="rewardRulesModal" hidden>
     <button class="reward-rules-backdrop" type="button" data-close-reward-rules aria-label="Close reward rules"></button>
@@ -1052,7 +1065,7 @@
 
     function renderTabs() {
       els.themeTabs.innerHTML = themes.map((theme, index) => `
-        <button class="theme-tab ${index === currentThemeIndex ? "active" : ""} ${theme.locked ? "locked" : ""}" type="button" data-theme="${index}" aria-disabled="${Boolean(theme.locked)}">
+        <button class="theme-tab ${index === currentThemeIndex ? "active" : ""} ${theme.locked ? "locked" : ""}" type="button" data-theme="${index}" data-theme-id="${theme.id}" aria-disabled="${Boolean(theme.locked)}">
           <span class="tab-num">${String(index + 1).padStart(2, "0")}</span>
           <span class="tab-title">${escapeHtml(theme.title)}<small>${theme.items.length} words</small></span>
         </button>
@@ -1077,7 +1090,7 @@
       const theme = themes[currentThemeIndex];
       els.cards.innerHTML = theme.items.map((item, index) => `
         <button class="word-card" type="button" data-index="${index}">
-          <span class="thumb"><img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.english)}"></span>
+          <span class="thumb"><img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.english)}" loading="lazy" decoding="async"></span>
           <span class="word-meta"><b class="cn-text" lang="zh-CN">${escapeHtml(item.chinese)}</b><span class="en-text">${escapeHtml(item.english)}</span></span>
         </button>
       `).join("");
@@ -1371,6 +1384,9 @@
     els.logoutBtn.addEventListener("click", async () => {
       await fetch("/api/auth/logout", { method: "POST" });
       location.href = "/login?next=%2Fchinese";
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) cancelQuizTransition();
     });
 
     init();

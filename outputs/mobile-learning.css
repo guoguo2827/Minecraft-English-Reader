@@ -1,0 +1,558 @@
+.mobile-header-buttons,
+.mobile-learning-nav,
+.mobile-page-backdrop,
+.mobile-theme-progress {
+  display: none;
+}
+
+@media (max-width: 760px) and (orientation: portrait) {
+  :root {
+    --mobile-header-height: 56px;
+    --mobile-nav-height: 64px;
+    --mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  html,
+  body[data-mobile-course] {
+    width: 100%;
+    min-width: 0;
+    min-height: 100%;
+    overflow-x: hidden;
+  }
+
+  body[data-mobile-course] {
+    height: auto;
+    min-height: 100dvh;
+    display: block;
+    padding-bottom: 0;
+  }
+
+  body[data-mobile-course="chinese"] {
+    padding-bottom: calc(var(--mobile-nav-height) + var(--mobile-safe-bottom));
+  }
+
+  body[data-mobile-course].mobile-overlay-open,
+  body[data-mobile-course][data-study-mode="quiz"] {
+    overflow: hidden;
+  }
+
+  body[data-mobile-course="english"] .app {
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    display: block;
+    overflow: visible;
+    padding-bottom: calc(var(--mobile-nav-height) + var(--mobile-safe-bottom));
+  }
+
+  body[data-mobile-course="english"] .topbar,
+  body[data-mobile-course="chinese"] > header {
+    position: sticky;
+    top: 0;
+    z-index: 80;
+    min-height: var(--mobile-header-height);
+    height: var(--mobile-header-height);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 6px max(10px, env(safe-area-inset-right, 0px)) 6px max(10px, env(safe-area-inset-left, 0px));
+    border-bottom-width: 4px;
+  }
+
+  body[data-mobile-course] .brand h1,
+  body[data-mobile-course="chinese"] > header h1 {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 18px;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-mobile-course] .brand p,
+  body[data-mobile-course="chinese"] > header .subtitle,
+  body[data-mobile-course] .trial-pill {
+    display: none;
+  }
+
+  .mobile-header-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mobile-head-button {
+    min-width: 46px;
+    min-height: 44px;
+    padding: 4px 8px;
+    border: 2px solid #f4de78;
+    border-radius: 6px;
+    background: #234b2d;
+    color: #fffbea;
+    font-size: 13px;
+    font-weight: 900;
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .2);
+  }
+
+  body[data-mobile-course] .top-actions {
+    position: fixed;
+    z-index: 1002;
+    top: calc(var(--mobile-header-height) + 6px);
+    right: max(8px, env(safe-area-inset-right, 0px));
+    left: max(8px, env(safe-area-inset-left, 0px));
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-height: calc(100dvh - var(--mobile-header-height) - var(--mobile-nav-height) - 24px);
+    padding: 12px;
+    overflow-y: auto;
+    border: 4px solid #5c391c;
+    border-radius: 7px;
+    background: #fff8df;
+    box-shadow: 0 10px 30px rgba(25, 18, 9, .35);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-10px);
+    transition: opacity .16s ease, transform .16s ease;
+  }
+
+  body[data-mobile-course].mobile-menu-open .top-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+
+  body[data-mobile-course] .top-actions > * {
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+    margin: 0;
+    padding: 7px;
+    white-space: normal;
+  }
+
+  .mobile-page-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: block;
+    border: 0;
+    background: rgba(21, 27, 17, .58);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .16s ease;
+  }
+
+  body.mobile-menu-open .mobile-page-backdrop,
+  body.mobile-theme-open .mobile-page-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  body[data-mobile-course="english"] .app > main,
+  body[data-mobile-course="chinese"] > main {
+    width: 100%;
+    height: auto;
+    min-height: calc(100dvh - var(--mobile-header-height) - var(--mobile-nav-height));
+    display: block;
+    margin: 0;
+    padding: 7px 7px 16px;
+    overflow: visible;
+  }
+
+  body[data-mobile-course] .sidebar {
+    position: fixed;
+    z-index: 1004;
+    inset: 0 auto 0 0;
+    width: min(86vw, 340px);
+    max-width: 340px;
+    height: 100dvh;
+    max-height: none;
+    display: block;
+    padding: calc(58px + env(safe-area-inset-top, 0px)) 12px calc(18px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    border-right: 5px solid #3b2515;
+    background: #e8f5dc;
+    box-shadow: 12px 0 28px rgba(22, 28, 16, .32);
+    transform: translateX(-110%);
+    transition: transform .2s ease;
+  }
+
+  body[data-mobile-course="chinese"] .sidebar {
+    display: block;
+    grid-template-columns: none;
+  }
+
+  body[data-mobile-course].mobile-theme-open .sidebar {
+    transform: translateX(0);
+  }
+
+  body[data-mobile-course] .sidebar::before {
+    position: absolute;
+    top: calc(15px + env(safe-area-inset-top, 0px));
+    left: 14px;
+    color: #244626;
+    font-size: 22px;
+    font-weight: 1000;
+  }
+
+  body[data-mobile-course="english"] .sidebar::before { content: "选择主题"; }
+  body[data-mobile-course="chinese"] .sidebar::before { content: "Choose a theme"; }
+
+  body[data-mobile-course] .sidebar .theme-tab {
+    min-height: 62px;
+    margin: 0 0 8px;
+    padding: 7px;
+    border-width: 3px;
+  }
+
+  .mobile-theme-progress {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 900;
+    opacity: .85;
+  }
+
+  body[data-mobile-course] .workspace {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    display: block;
+    overflow: visible;
+    padding: 0;
+  }
+
+  body[data-mobile-course="english"] .hero,
+  body[data-mobile-course="chinese"] .study-bar {
+    position: sticky;
+    top: var(--mobile-header-height);
+    z-index: 40;
+    width: 100%;
+    min-width: 0;
+    margin-bottom: 8px;
+    padding: 6px;
+    border-width: 3px;
+    border-radius: 6px;
+    background: rgba(255, 249, 232, .98);
+    box-shadow: 0 5px 14px rgba(35, 42, 24, .18);
+  }
+
+  body[data-mobile-course="english"] .learning-panel {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 5px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  body[data-mobile-course="english"] .theme-heading,
+  body[data-mobile-course="chinese"] .study-bar > div:first-child,
+  body[data-mobile-course] .mode-switch,
+  body[data-mobile-course="chinese"] .study-actions {
+    display: none;
+  }
+
+  body[data-mobile-course="english"] .study-controls {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  body[data-mobile-course="english"] .cn-toggle {
+    width: auto;
+    min-width: 92px;
+    min-height: 42px;
+    padding: 4px 10px;
+    border-width: 3px;
+    font-size: 14px;
+  }
+
+  body[data-mobile-course="english"] .reward-board {
+    min-height: 70px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 72px;
+    grid-template-rows: auto 8px;
+    gap: 3px 6px;
+    padding: 5px;
+    border-width: 3px;
+  }
+
+  body[data-mobile-course="english"] .reward-head {
+    min-width: 0;
+    grid-column: 1;
+    grid-row: 1;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  body[data-mobile-course="english"] .gem-stage {
+    width: 44px;
+    height: 44px;
+  }
+
+  body[data-mobile-course="english"] .gem-stage svg {
+    width: 34px;
+    height: 34px;
+  }
+
+  body[data-mobile-course="english"] .reward-kicker,
+  body[data-mobile-course="english"] .reward-rules-button {
+    font-size: 10px;
+  }
+
+  body[data-mobile-course="english"] .reward-title {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-mobile-course="english"] .reward-exp { font-size: 11px; }
+
+  body[data-mobile-course="english"] .reward-bar {
+    grid-column: 1;
+    grid-row: 2;
+    height: 8px;
+  }
+
+  body[data-mobile-course="english"] .reward-stats {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  body[data-mobile-course="english"] .reward-stat:not(:nth-child(2)) { display: none; }
+  body[data-mobile-course="english"] .reward-stat:nth-child(2) { display: grid; place-content: center; }
+
+  body[data-mobile-course="chinese"] .study-bar {
+    display: block;
+  }
+
+  body[data-mobile-course="chinese"] .core-reward {
+    min-height: 70px;
+    grid-template-columns: 44px minmax(0, 1fr) 66px;
+    gap: 6px;
+    padding: 5px;
+    border-width: 3px;
+  }
+
+  body[data-mobile-course="chinese"] .core-gem {
+    width: 42px;
+    height: 42px;
+  }
+
+  body[data-mobile-course="chinese"] .core-reward h3 {
+    overflow: hidden;
+    font-size: 15px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-mobile-course="chinese"] .core-reward-meta p { font-size: 11px; }
+  body[data-mobile-course="chinese"] .reward-stats { display: grid; grid-template-columns: 1fr; }
+  body[data-mobile-course="chinese"] .reward-stats span:not(:nth-child(2)) { display: none; }
+
+  body[data-mobile-course="english"] .card-flow { display: block; }
+
+  body[data-mobile-course] .cards {
+    width: 100%;
+    max-height: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding-bottom: 10px;
+    overflow: visible;
+  }
+
+  body[data-mobile-course] .word-card {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    grid-template-rows: clamp(116px, 35vw, 154px) 70px;
+    border-width: 3px;
+    border-radius: 6px;
+  }
+
+  body[data-mobile-course] .thumb {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    aspect-ratio: auto;
+  }
+
+  body[data-mobile-course] .thumb canvas,
+  body[data-mobile-course] .thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  body[data-mobile-course] .word-meta {
+    min-height: 70px;
+    gap: 3px;
+    padding: 6px 4px;
+  }
+
+  body[data-mobile-course] .word-meta b,
+  body[data-mobile-course] .word-meta b.long-word,
+  body[data-mobile-course] .word-meta .cn-text {
+    max-width: 100%;
+    font-size: clamp(15px, 4.5vw, 19px);
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+  }
+
+  body[data-mobile-course] .word-meta span,
+  body[data-mobile-course] .word-meta .en-text {
+    min-height: 18px;
+    font-size: clamp(13px, 4vw, 17px);
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+  }
+
+  body[data-mobile-course][data-study-mode="quiz"] .cards {
+    filter: blur(5px) grayscale(.2);
+    opacity: .28;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  body[data-mobile-course][data-study-mode="quiz"] .quiz {
+    position: fixed;
+    z-index: 70;
+    top: calc(var(--mobile-header-height) + 8px);
+    right: max(7px, env(safe-area-inset-right, 0px));
+    bottom: calc(var(--mobile-nav-height) + var(--mobile-safe-bottom) + 8px);
+    left: max(7px, env(safe-area-inset-left, 0px));
+    width: auto;
+    min-width: 0;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    padding: 12px;
+    overflow-y: auto;
+    border-width: 4px;
+    border-radius: 8px;
+    background: rgba(239, 251, 222, .985);
+    box-shadow: 0 12px 32px rgba(28, 42, 20, .32);
+  }
+
+  body[data-mobile-course="english"][data-study-mode="quiz"] .quiz {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  body[data-mobile-course="english"] .quiz-top {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  body[data-mobile-course="english"] .quiz-top > div {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  body[data-mobile-course] .quiz-word {
+    font-size: clamp(28px, 10vw, 42px);
+    overflow-wrap: anywhere;
+  }
+
+  body[data-mobile-course] .answers {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    align-content: center;
+  }
+
+  body[data-mobile-course] .answer {
+    min-height: 62px;
+    padding: 8px 5px;
+    font-size: clamp(16px, 4.6vw, 20px);
+    overflow-wrap: anywhere;
+  }
+
+  body[data-mobile-course="chinese"][data-study-mode="quiz"] .quiz {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  body[data-mobile-course="chinese"] .quiz-prompt,
+  body[data-mobile-course="chinese"] .answers {
+    grid-column: 1 / -1;
+  }
+
+  body[data-mobile-course="chinese"] #scrollTopBtn { display: none; }
+
+  body[data-mobile-course="chinese"] .quiz-thumb {
+    width: 68px;
+    height: 68px;
+  }
+
+  .mobile-learning-nav {
+    position: fixed;
+    z-index: 90;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    min-height: calc(var(--mobile-nav-height) + var(--mobile-safe-bottom));
+    padding: 6px max(7px, env(safe-area-inset-right, 0px)) calc(6px + var(--mobile-safe-bottom)) max(7px, env(safe-area-inset-left, 0px));
+    gap: 7px;
+    border-top: 4px solid #3d2818;
+    background: rgba(255, 249, 232, .98);
+    box-shadow: 0 -7px 22px rgba(31, 28, 18, .22);
+  }
+
+  .mobile-learning-nav button {
+    min-width: 0;
+    min-height: 48px;
+    padding: 4px;
+    border: 3px solid #6b4a23;
+    border-radius: 6px;
+    background: #fff4c9;
+    color: #25351d;
+    font-size: 14px;
+    font-weight: 1000;
+  }
+
+  body[data-study-mode="learn"] .mobile-learning-nav [data-mode-button="learn"],
+  body[data-study-mode="quiz"] .mobile-learning-nav [data-mode-button="quiz"] {
+    background: #47a54d;
+    color: #fff;
+    border-color: #20592b;
+  }
+
+  body[data-mobile-course] .copyright-note,
+  body[data-mobile-course] .notice {
+    padding-bottom: calc(var(--mobile-nav-height) + var(--mobile-safe-bottom) + 6px);
+  }
+
+  body[data-mobile-course] .rotate-tip {
+    display: none !important;
+  }
+}
+
+@media (max-width: 359px) and (orientation: portrait) {
+  body[data-mobile-course] .word-card {
+    grid-template-rows: 108px 66px;
+  }
+
+  body[data-mobile-course] .word-meta b,
+  body[data-mobile-course] .word-meta b.long-word,
+  body[data-mobile-course] .word-meta .cn-text { font-size: 14px; }
+
+  body[data-mobile-course] .word-meta span,
+  body[data-mobile-course] .word-meta .en-text { font-size: 12px; }
+
+  body[data-mobile-course="english"] .reward-title { font-size: 14px; }
+  .mobile-learning-nav button { font-size: 13px; }
+}

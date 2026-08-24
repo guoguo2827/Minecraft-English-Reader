@@ -6,9 +6,13 @@
   <title>Minecraft 英语口语测评</title>
   <link rel="stylesheet" href="speaking.css">
 </head>
-<body data-show-chinese="true">
+<body data-show-chinese="true" data-mobile-speaking="true">
   <header class="speaking-topbar">
     <div class="speaking-brand"><strong>Minecraft Speaking Quest</strong><span>方块英语口语测评 · 100句跟读挑战</span></div>
+    <div class="speaking-mobile-actions">
+      <button id="mobileChapterBtn" type="button" aria-expanded="false">章节</button>
+      <button id="mobileSpeakingMenuBtn" type="button" aria-expanded="false">菜单</button>
+    </div>
     <nav class="top-actions" aria-label="页面导航">
       <button class="pixel-button secondary" id="chineseToggle" type="button">隐藏中文</button>
       <a href="/">返回单词学习</a>
@@ -35,6 +39,7 @@
 
     <section class="speaking-workspace" id="speakingWorkspace" hidden>
       <aside class="chapters-panel">
+        <div class="mobile-panel-head"><h2 class="panel-title">口语章节</h2><button id="mobileChapterCloseBtn" type="button" aria-label="关闭章节">关闭</button></div>
         <h2 class="panel-title">口语章节</h2>
         <div class="chapter-list" id="chapterList"></div>
       </aside>
@@ -45,6 +50,7 @@
           <div class="controls">
             <button id="prevPhraseBtn" type="button" aria-label="上一句">上一句</button>
             <button id="nextPhraseBtn" type="button" aria-label="下一句">下一句</button>
+            <button class="mobile-growth-button" id="mobileGrowthBtn" type="button" aria-expanded="false">成长 <span id="mobileGrowthSummary">0/100</span></button>
           </div>
         </header>
         <div class="phrase-stage">
@@ -73,6 +79,7 @@
       </section>
 
       <aside class="growth-panel">
+        <div class="mobile-panel-head"><h2>我的口语成长</h2><button id="mobileGrowthCloseBtn" type="button" aria-label="关闭成长面板">关闭</button></div>
         <h2>我的口语成长</h2>
         <div class="growth-grid">
           <div class="growth-stat"><strong id="attemptedCount">0</strong><span>已练习</span></div>
@@ -97,6 +104,7 @@
   </div>
 
   <div class="rotate-notice"><div><strong>请将设备横过来</strong><span>横屏可以完整看到句子、录音和成长进度。</span></div></div>
+  <button class="speaking-mobile-backdrop" id="speakingMobileBackdrop" type="button" aria-label="关闭面板"></button>
 
   <script>
     const $ = (selector) => document.querySelector(selector);
@@ -188,6 +196,24 @@
       $("#badgeList").innerHTML = progress.badges.length
         ? progress.badges.map((badge) => `<span class="badge">${badge.title}</span>`).join("")
         : '<span class="muted">完成每章20句三星挑战即可获得</span>';
+      $("#mobileGrowthSummary").textContent = `${progress.masteredPhrases}/100 · 余${progress.todayRemaining}`;
+    }
+
+    function closeMobileSpeakingPanels() {
+      document.body.classList.remove("speaking-menu-open", "speaking-chapters-open", "speaking-growth-open", "speaking-overlay-open");
+      $("#mobileChapterBtn").setAttribute("aria-expanded", "false");
+      $("#mobileSpeakingMenuBtn").setAttribute("aria-expanded", "false");
+      $("#mobileGrowthBtn").setAttribute("aria-expanded", "false");
+    }
+
+    function toggleMobileSpeakingPanel(name) {
+      const className = `speaking-${name}-open`;
+      const shouldOpen = !document.body.classList.contains(className);
+      closeMobileSpeakingPanels();
+      if (!shouldOpen) return;
+      document.body.classList.add(className, "speaking-overlay-open");
+      const trigger = name === "chapters" ? $("#mobileChapterBtn") : name === "menu" ? $("#mobileSpeakingMenuBtn") : $("#mobileGrowthBtn");
+      trigger.setAttribute("aria-expanded", "true");
     }
 
     async function boot() {
@@ -239,6 +265,7 @@
 
     function setMicState(next) {
       state.micState = next;
+      if (next !== "idle") closeMobileSpeakingPanels();
       const button = $("#micBtn");
       button.classList.toggle("recording", next === "recording");
       button.classList.toggle("countdown", next === "countdown");
@@ -434,6 +461,16 @@
       const firstOpen = activeTheme().items.findIndex((item) => !item.mastered);
       state.phraseIndex = firstOpen >= 0 ? firstOpen : 0;
       renderPhrase();
+      closeMobileSpeakingPanels();
+    });
+    $("#mobileChapterBtn").addEventListener("click", () => toggleMobileSpeakingPanel("chapters"));
+    $("#mobileSpeakingMenuBtn").addEventListener("click", () => toggleMobileSpeakingPanel("menu"));
+    $("#mobileGrowthBtn").addEventListener("click", () => toggleMobileSpeakingPanel("growth"));
+    $("#mobileChapterCloseBtn").addEventListener("click", closeMobileSpeakingPanels);
+    $("#mobileGrowthCloseBtn").addEventListener("click", closeMobileSpeakingPanels);
+    $("#speakingMobileBackdrop").addEventListener("click", closeMobileSpeakingPanels);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeMobileSpeakingPanels();
     });
     $("#privacyCancelBtn").addEventListener("click", () => { $("#privacyModal").hidden = true; });
     $("#privacyConfirmBtn").addEventListener("click", () => {
@@ -442,6 +479,12 @@
       beginRecordingFlow();
     });
     window.addEventListener("pagehide", cleanupRecording);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        closeMobileSpeakingPanels();
+        cleanupRecording();
+      }
+    });
     boot();
   </script>
 </body>

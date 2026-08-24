@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Minecraft English Reader</title>
   <style>
     :root {
@@ -1283,8 +1283,10 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="/mobile-learning.css">
+  <script src="/mobile-learning.js" defer></script>
 </head>
-<body>
+<body data-mobile-course="english" data-study-mode="learn" data-show-cn="true">
   <div class="rotate-tip" aria-hidden="true">
     <div>请将手机横屏使用，卡片和答题区会更清楚。</div>
   </div>
@@ -1293,6 +1295,10 @@
       <div class="brand">
         <h1>Minecraft English Reader</h1>
         <p>我的世界英语点读学习 · 方块切片修复 v7</p>
+      </div>
+      <div class="mobile-header-buttons">
+        <button class="mobile-head-button" type="button" data-mobile-voice-target="#voiceStatus">语音</button>
+        <button class="mobile-head-button" type="button" data-mobile-menu-trigger aria-expanded="false" aria-label="打开更多功能">菜单</button>
       </div>
       <div class="top-actions">
         <span class="trial-pill" id="trialStatus"></span>
@@ -1362,8 +1368,15 @@
         </section>
       </section>
     </main>
+    <nav class="mobile-learning-nav" aria-label="手机学习导航">
+      <button type="button" data-mode-button="learn">点读</button>
+      <button type="button" data-mode-button="quiz">答题</button>
+      <button type="button" data-mobile-theme-trigger aria-expanded="false">主题</button>
+    </nav>
     <p class="copyright-note">非官方学习工具，与 Mojang、Microsoft、Minecraft 官方无关联，仅供私人学习交流使用。</p>
   </div>
+
+  <button class="mobile-page-backdrop" type="button" data-mobile-backdrop aria-label="关闭菜单"></button>
 
   <div class="reward-rules-modal" id="rewardRulesModal" hidden>
     <button class="reward-rules-backdrop" type="button" data-close-reward-rules aria-label="关闭奖励规则"></button>
@@ -2457,7 +2470,7 @@
 
     function renderTabs() {
       els.themeTabs.innerHTML = themes.map((theme, index) => `
-        <button class="theme-tab ${index === currentThemeIndex ? "active" : ""} ${themeIsLocked(theme) ? "locked" : ""}" type="button" data-theme="${index}" aria-disabled="${themeIsLocked(theme)}">
+        <button class="theme-tab ${index === currentThemeIndex ? "active" : ""} ${themeIsLocked(theme) ? "locked" : ""}" type="button" data-theme="${index}" data-theme-id="${theme.id}" aria-disabled="${themeIsLocked(theme)}">
           <span class="tab-num">${String(index + 1).padStart(2, "0")}</span>
           <span class="tab-title">${theme.title}<small>${theme.subtitle}</small></span>
         </button>
@@ -2826,6 +2839,9 @@
     });
     window.speechSynthesis?.addEventListener?.("voiceschanged", pickVoice);
     window.addEventListener("resize", () => renderCards());
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) cancelQuizTransition();
+    });
 
     async function boot() {
       await initUser();
