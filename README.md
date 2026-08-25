@@ -40,6 +40,10 @@ npm start
 
 口语测评上线前还需在 `.env` 配置 `TENCENT_SOE_APP_ID`，并将 `TENCENT_SOE_ENABLED` 改为 `true`。浏览器麦克风在公网环境必须通过 HTTPS 使用；服务端只保存评分，不保存录音。
 
+## Android 内测版
+
+`mobile-app` 是独立的 Capacitor Android 容器，只通过 HTTPS 加载现有线上服务，不包含业务数据库，也不会改变网页端 API。调试构建、正式签名和真机验收步骤见 `mobile-app/README.md`。
+
 ## 腾讯云部署简要步骤
 
 ```bash

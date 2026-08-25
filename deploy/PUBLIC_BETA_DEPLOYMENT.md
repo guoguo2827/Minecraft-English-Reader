@@ -6,6 +6,7 @@ Point the domain to the server. In `/opt/minecraft-english-reader/.env`, set the
 
 ```dotenv
 APP_BASE_URL=https://eduplayer.top
+PUBLIC_BASE_URL=https://eduplayer.top
 HOST=127.0.0.1
 COOKIE_SECURE=true
 ACCESS_CONTROL_ENFORCED=false

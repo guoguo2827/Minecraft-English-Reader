@@ -110,6 +110,75 @@ test("admin login returns secure public user shape and persistent session cookie
   assert.ok(Array.isArray(payload.user.allowedThemeIds.chinese));
 });
 
+test("referral links replace the legacy IP with the public HTTPS domain", () => {
+  const previousBase = process.env.APP_BASE_URL;
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.APP_BASE_URL = "http://81.70.207.242";
+  try {
+    const link = helpers.referralUrl({
+      hostname: "eduplayer.top",
+      protocol: "https",
+      get: () => "eduplayer.top"
+    }, 1, 1);
+    assert.equal(new URL(link).origin, "https://eduplayer.top");
+    assert.match(link, /^https:\/\/eduplayer\.top\/register#ref=/);
+
+    process.env.NODE_ENV = "production";
+    const linkFromLegacyIp = helpers.referralUrl({
+      hostname: "81.70.207.242",
+      protocol: "http",
+      get: () => "81.70.207.242"
+    }, 1, 1);
+    assert.match(linkFromLegacyIp, /^https:\/\/eduplayer\.top\/register#ref=/);
+  } finally {
+    process.env.NODE_ENV = previousNodeEnv;
+    if (previousBase === undefined) delete process.env.APP_BASE_URL;
+    else process.env.APP_BASE_URL = previousBase;
+  }
+});
+
+test("admin can regenerate an unused or disabled whitelist invitation", async () => {
+  const phone = "13600000003";
+  const firstResponse = await fetch(`${baseUrl}/api/admin/whitelist`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ phone, note: "First", primaryCourse: "english" })
+  });
+  assert.equal(firstResponse.status, 200);
+  const first = await firstResponse.json();
+  assert.match(first.inviteCode, /^[A-Z2-9]{6}$/);
+
+  const disableResponse = await fetch(`${baseUrl}/api/admin/whitelist/${first.id}`, {
+    method: "PATCH",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ status: "disabled" })
+  });
+  assert.equal(disableResponse.status, 200);
+
+  const refreshedResponse = await fetch(`${baseUrl}/api/admin/whitelist`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ phone, note: "Updated", primaryCourse: "chinese" })
+  });
+  assert.equal(refreshedResponse.status, 200);
+  const refreshed = await refreshedResponse.json();
+  assert.equal(refreshed.id, first.id);
+  assert.equal(refreshed.regenerated, true);
+  assert.notEqual(refreshed.inviteCode, first.inviteCode);
+  assert.deepEqual(
+    db.prepare("SELECT status, note, primary_course AS primaryCourse, invite_display AS inviteCode FROM phone_whitelist WHERE id = ?").get(first.id),
+    { status: "unused", note: "Updated", primaryCourse: "chinese", inviteCode: refreshed.inviteCode }
+  );
+
+  const registeredResponse = await fetch(`${baseUrl}/api/admin/whitelist`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ phone: "13900000001", primaryCourse: "english" })
+  });
+  assert.equal(registeredResponse.status, 409);
+  assert.equal((await registeredResponse.json()).code, "PHONE_ALREADY_REGISTERED");
+});
+
 test("referral approval creates a free user and friendship atomically", async () => {
   const founderLogin = await login("13900000001", "LegacyPass123");
   assert.equal(founderLogin.response.status, 200);

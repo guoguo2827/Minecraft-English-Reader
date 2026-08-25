@@ -1,0 +1,18 @@
+{
+  "appId": "top.eduplayer.reader",
+  "appName": "方块英语点读",
+  "webDir": "www",
+  "server": {
+    "url": "https://eduplayer.top",
+    "errorPath": "error.html",
+    "cleartext": false,
+    "allowNavigation": [
+      "eduplayer.top"
+    ]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}

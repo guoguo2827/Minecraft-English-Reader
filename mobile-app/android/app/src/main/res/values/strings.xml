@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">方块英语点读</string>
+    <string name="title_activity_main">方块英语点读</string>
+    <string name="package_name">top.eduplayer.reader</string>
+    <string name="custom_url_scheme">top.eduplayer.reader</string>
+    <string name="press_back_again">再按一次退出</string>
+    <string name="microphone_permission_reason">口语测评需要使用麦克风。录音仅用于本次评分，不会保存在设备中。</string>
+</resources>

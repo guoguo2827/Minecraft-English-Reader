@@ -2566,10 +2566,35 @@ function createFriendship(userA, userB, course) {
   return db.prepare("SELECT * FROM friendships WHERE user_low_id = ? AND user_high_id = ?").get(low, high);
 }
 
+function normalizedPublicOrigin(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    if (!['http:', 'https:'].includes(url.protocol)) return "";
+    return url.origin;
+  } catch {
+    return "";
+  }
+}
+
+function publicAppOrigin(req) {
+  const requestHost = String(req.hostname || "").toLowerCase();
+  if (requestHost === "eduplayer.top" || requestHost === "www.eduplayer.top") {
+    return "https://eduplayer.top";
+  }
+
+  const publicBase = normalizedPublicOrigin(process.env.PUBLIC_BASE_URL);
+  if (publicBase) return publicBase;
+
+  const configuredBase = normalizedPublicOrigin(process.env.APP_BASE_URL);
+  if (process.env.NODE_ENV === "production" && configuredBase) {
+    const configuredHost = new URL(configuredBase).hostname;
+    if (configuredHost === "81.70.207.242") return "https://eduplayer.top";
+  }
+  return configuredBase || `${req.protocol}://${req.get("host")}`;
+}
+
 function referralUrl(req, userId, version) {
-  const configuredBase = String(process.env.APP_BASE_URL || "").replace(/\/$/, "");
-  const base = configuredBase || `${req.protocol}://${req.get("host")}`;
-  return `${base}/register#ref=${encodeURIComponent(referralToken(userId, version))}`;
+  return `${publicAppOrigin(req)}/register#ref=${encodeURIComponent(referralToken(userId, version))}`;
 }
 
 function primaryCourseTables(course) {
@@ -3654,7 +3679,14 @@ app.get("/api/admin/whitelist", requireAdmin, (req, res) => {
     FROM phone_whitelist ORDER BY created_at DESC
     LIMIT ? OFFSET ?
   `).all(pageSize, offset);
-  return res.json({ items: rows, page: safePage, pageSize, total, totalPages });
+  return res.json({
+    items: rows,
+    page: safePage,
+    pageSize,
+    total,
+    totalPages,
+    registrationUrl: `${publicAppOrigin(req)}/register`
+  });
 });
 
 app.post("/api/admin/whitelist", requireAdmin, (req, res) => {
@@ -3663,16 +3695,56 @@ app.post("/api/admin/whitelist", requireAdmin, (req, res) => {
   const primaryCourse = req.body.primaryCourse === "chinese" ? "chinese" : "english";
   if (!isValidPhone(phone)) return res.status(400).json({ error: "请输入正确的11位手机号" });
   const code = randomCode(6);
+
+  const registeredUser = db.prepare("SELECT id FROM users WHERE phone = ?").get(phone);
+  if (registeredUser) {
+    return res.status(409).json({ code: "PHONE_ALREADY_REGISTERED", error: "该手机号已经注册，无需再次生成邀请码" });
+  }
+
+  const existing = db.prepare("SELECT id, status, used_by FROM phone_whitelist WHERE phone = ?").get(phone);
+  if (existing && (existing.status === "used" || existing.used_by)) {
+    return res.status(409).json({ code: "INVITE_ALREADY_USED", error: "该手机号的邀请码已经使用，不能重新生成" });
+  }
+
   try {
+    if (existing) {
+      db.prepare(`
+        UPDATE phone_whitelist
+        SET note = ?, invite_hash = ?, invite_display = ?, status = 'unused', primary_course = ?,
+            created_by = ?, created_at = ?, disabled_at = NULL
+        WHERE id = ?
+      `).run(note, hashInvite(code), code, primaryCourse, req.user.id, now(), existing.id);
+      auditAdmin(req, "whitelist.regenerate", "phone_whitelist", existing.id, { phoneLast4: phone.slice(-4), primaryCourse });
+      return res.json({
+        id: existing.id,
+        phone,
+        note,
+        inviteCode: code,
+        status: "unused",
+        primaryCourse,
+        regenerated: true,
+        registrationUrl: `${publicAppOrigin(req)}/register`
+      });
+    }
+
     const result = db.prepare(`
       INSERT INTO phone_whitelist (
         phone, note, invite_hash, invite_display, status, primary_course, created_by, created_at
       ) VALUES (?, ?, ?, ?, 'unused', ?, ?, ?)
     `).run(phone, note, hashInvite(code), code, primaryCourse, req.user.id, now());
     auditAdmin(req, "whitelist.create", "phone_whitelist", result.lastInsertRowid, { phoneLast4: phone.slice(-4), primaryCourse });
-    return res.json({ id: result.lastInsertRowid, phone, note, inviteCode: code, status: "unused", primaryCourse });
+    return res.json({
+      id: result.lastInsertRowid,
+      phone,
+      note,
+      inviteCode: code,
+      status: "unused",
+      primaryCourse,
+      registrationUrl: `${publicAppOrigin(req)}/register`
+    });
   } catch (error) {
-    return res.status(409).json({ error: "该手机号已在白名单中" });
+    console.error("Failed to create whitelist invitation:", error.message);
+    return res.status(500).json({ code: "WHITELIST_CREATE_FAILED", error: "邀请码生成失败，请稍后重试" });
   }
 });
 
@@ -4091,7 +4163,9 @@ module.exports = {
     recordSpeakingResult,
     friendStats,
     parseReferralToken,
+    publicAppOrigin,
     referralToken,
+    referralUrl,
     shanghaiDateKey,
     speakingEligibility,
     speakingProgressSummary,

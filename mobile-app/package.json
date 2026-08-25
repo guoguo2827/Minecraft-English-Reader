@@ -1,0 +1,21 @@
+{
+  "name": "eduplayer-android-shell",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Private Android shell for the EduPlayer language learning service.",
+  "scripts": {
+    "sync": "cap sync android",
+    "open": "cap open android",
+    "build:debug": "npm run sync && cd android && gradlew.bat assembleDebug",
+    "build:release": "npm run sync && cd android && gradlew.bat assembleRelease",
+    "check": "node scripts/validate-config.mjs",
+    "doctor": "cap doctor android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.0.2",
+    "@capacitor/core": "8.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.0.2"
+  }
+}
