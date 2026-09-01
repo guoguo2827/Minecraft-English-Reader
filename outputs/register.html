@@ -35,9 +35,12 @@
     const params = new URLSearchParams(location.search);
     const fragmentParams = new URLSearchParams(location.hash.replace(/^#/, ""));
     const referralToken = fragmentParams.get("ref") || params.get("ref") || "";
+    const whitelistToken = fragmentParams.get("invite") || params.get("invite") || "";
     const requestedNext = params.get("next") || "";
     const nextPath = /^\/chinese(?:\/|$)/.test(requestedNext) ? requestedNext : "/";
     const referralMode = Boolean(referralToken);
+    const whitelistLinkMode = Boolean(whitelistToken);
+    const linkedInvitationMode = referralMode || whitelistLinkMode;
     let englishUi = false;
 
     function applyEnglishUi() {
@@ -45,8 +48,10 @@
       document.documentElement.lang = "en";
       document.title = "Register - Minecraft Reader";
       document.querySelector("#registerKicker").textContent = referralMode ? "Friend Invitation" : "Administrator Invitation";
-      document.querySelector("#registerTitle").textContent = referralMode ? "Apply for a Free Trial" : "Invitation Registration";
-      document.querySelector("#registerIntro").textContent = referralMode ? "An administrator will review the application. The 14-day trial starts only after approval." : "Use the phone number and invitation code provided by the administrator, then create a password.";
+      document.querySelector("#registerTitle").textContent = referralMode ? "Apply for a Free Trial" : (whitelistLinkMode ? "Complete Registration" : "Invitation Registration");
+      document.querySelector("#registerIntro").textContent = referralMode
+        ? "An administrator will review the application. The 14-day trial starts only after approval."
+        : (whitelistLinkMode ? "Your invitation has been verified. Enter the invited phone number and create a password." : "Use the phone number and invitation code provided by the administrator, then create a password.");
       document.querySelector("#phoneLabel").textContent = "Phone Number";
       document.querySelector("#inviteCodeLabel").textContent = "Invitation Code";
       document.querySelector("#passwordLabel").textContent = "Password";
@@ -55,7 +60,9 @@
       document.querySelector("#privacyLink").textContent = "Privacy & Trial Notice";
       document.querySelector("#privacyLink").href = "/privacy?lang=en";
       document.querySelector("#submitBtn").textContent = referralMode ? "Submit for Review" : "Register and Sign In";
-      document.querySelector("#registerNotice").textContent = referralMode ? "The trial period does not start while your application is being reviewed." : "The invitation code expires immediately after successful registration.";
+      document.querySelector("#registerNotice").textContent = referralMode
+        ? "The trial period does not start while your application is being reviewed."
+        : (whitelistLinkMode ? "No invitation code is required. This private link expires after registration." : "The invitation code expires immediately after successful registration.");
       document.querySelector("#loginCopy").firstChild.textContent = "Already registered? ";
       document.querySelector("#loginLink").textContent = "Sign In";
       document.querySelector("#loginLink").href = "/login?next=%2Fchinese";
@@ -65,22 +72,31 @@
 
     if (nextPath !== "/") document.querySelector("#loginLink").href = `/login?next=${encodeURIComponent(nextPath)}`;
 
-    async function loadReferral() {
-      if (!referralMode) {
+    async function loadInvitation() {
+      if (!linkedInvitationMode) {
         form.elements.inviteCode.required = true;
         return;
       }
-      document.querySelector("#registerKicker").textContent = "好友邀请";
-      document.querySelector("#registerTitle").textContent = "申请免费体验";
-      document.querySelector("#registerIntro").textContent = "提交后由管理员审核，批准时开始14天体验。";
       document.querySelector("#inviteCodeField").hidden = true;
-      document.querySelector("#guardianField").hidden = false;
-      document.querySelector("#registerNotice").textContent = "审核期间不会消耗体验天数。管理员批准后即可使用手机号和密码登录。";
-      document.querySelector("#submitBtn").textContent = "提交审核申请";
-      const response = await fetch("/api/referrals/preview", {
+      form.elements.inviteCode.required = false;
+      if (referralMode) {
+        document.querySelector("#registerKicker").textContent = "好友邀请";
+        document.querySelector("#registerTitle").textContent = "申请免费体验";
+        document.querySelector("#registerIntro").textContent = "提交后由管理员审核，批准时开始14天体验。";
+        document.querySelector("#guardianField").hidden = false;
+        document.querySelector("#registerNotice").textContent = "审核期间不会消耗体验天数。管理员批准后即可使用手机号和密码登录。";
+        document.querySelector("#submitBtn").textContent = "提交审核申请";
+      } else {
+        document.querySelector("#registerKicker").textContent = "管理员专属邀请";
+        document.querySelector("#registerTitle").textContent = "完成注册";
+        document.querySelector("#registerIntro").textContent = "邀请已验证，请填写受邀手机号并设置登录密码。";
+        document.querySelector("#registerNotice").textContent = "无需填写邀请码；注册成功后此专属链接自动失效。";
+        document.querySelector("#submitBtn").textContent = "注册并登录";
+      }
+      const response = await fetch(referralMode ? "/api/referrals/preview" : "/api/whitelist-invitations/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: referralToken })
+        body: JSON.stringify({ token: referralMode ? referralToken : whitelistToken })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -91,7 +107,11 @@
       if (data.primaryCourse === "chinese") applyEnglishUi();
       const preview = document.querySelector("#invitePreview");
       preview.hidden = false;
-      preview.innerHTML = `<strong>${escapeHtml(data.socialName)}</strong><span>${englishUi ? `Chinese Reader · ${data.remainingUses} invitations left` : `${data.primaryCourse === "chinese" ? "中文学习" : "英语学习"} · 剩余 ${data.remainingUses} 个邀请名额`}</span>`;
+      if (referralMode) {
+        preview.innerHTML = `<strong>${escapeHtml(data.socialName)}</strong><span>${englishUi ? `Chinese Reader · ${data.remainingUses} invitations left` : `${data.primaryCourse === "chinese" ? "中文学习" : "英语学习"} · 剩余 ${data.remainingUses} 个邀请名额`}</span>`;
+      } else {
+        preview.innerHTML = `<strong>${englishUi ? "Private invitation verified" : "专属邀请已验证"}</strong><span>${englishUi ? `${data.phoneHint} · Chinese Reader` : `${data.phoneHint} · ${data.primaryCourse === "chinese" ? "中文点读" : "英文点读"}`}</span>`;
+      }
     }
 
     function escapeHtml(value) {
@@ -102,11 +122,12 @@
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      message.textContent = englishUi ? "Submitting for review..." : (referralMode ? "正在提交审核申请..." : "正在注册...");
+      message.textContent = englishUi ? (referralMode ? "Submitting for review..." : "Registering...") : (referralMode ? "正在提交审核申请..." : "正在注册...");
       const body = Object.fromEntries(new FormData(form).entries());
       body.phone = String(body.phone || "").replace(/\D/g, "").slice(0, 11);
       body.guardianConfirmed = form.elements.guardianConfirmed.checked;
       if (referralMode) body.referralToken = referralToken;
+      if (whitelistLinkMode) body.whitelistToken = whitelistToken;
       if (body.password !== body.confirmPassword) {
         message.textContent = englishUi ? "The two passwords do not match" : "两次输入的密码不一致";
         return;
@@ -135,7 +156,7 @@
       form.elements.phone.value = form.elements.phone.value.replace(/\D/g, "").slice(0, 11);
     });
 
-    loadReferral();
+    loadInvitation();
   </script>
 </body>
 </html>

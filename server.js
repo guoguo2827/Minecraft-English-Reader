@@ -2597,6 +2597,41 @@ function referralUrl(req, userId, version) {
   return `${publicAppOrigin(req)}/register#ref=${encodeURIComponent(referralToken(userId, version))}`;
 }
 
+function whitelistInviteToken(whitelist) {
+  const id = Number(whitelist?.id);
+  const inviteHash = String(whitelist?.invite_hash || whitelist?.inviteHash || "");
+  if (!Number.isInteger(id) || id <= 0 || !inviteHash) return "";
+  const payload = String(id);
+  const signature = hmacSha256(referralSecret(), `whitelist.${payload}.${inviteHash}`, "base64url").slice(0, 32);
+  return `${Buffer.from(payload).toString("base64url")}.${signature}`;
+}
+
+function activeWhitelistFromToken(token) {
+  try {
+    const [encoded, signature] = String(token || "").split(".");
+    if (!encoded || !signature) return null;
+    const id = Number(Buffer.from(encoded, "base64url").toString("utf8"));
+    if (!Number.isInteger(id) || id <= 0) return null;
+    const whitelist = db.prepare("SELECT * FROM phone_whitelist WHERE id = ?").get(id);
+    if (!whitelist || whitelist.status !== "unused" || !whitelist.invite_hash) return null;
+    const expected = hmacSha256(
+      referralSecret(),
+      `whitelist.${id}.${whitelist.invite_hash}`,
+      "base64url"
+    ).slice(0, 32);
+    if (signature.length !== expected.length
+      || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+    return whitelist;
+  } catch {
+    return null;
+  }
+}
+
+function whitelistRegistrationUrl(req, whitelist) {
+  const token = whitelistInviteToken(whitelist);
+  return token ? `${publicAppOrigin(req)}/register#invite=${encodeURIComponent(token)}` : "";
+}
+
 function primaryCourseTables(course) {
   return course === "chinese"
     ? {
@@ -2763,6 +2798,15 @@ function sendReferralPreview(token, res) {
   });
 }
 
+function sendWhitelistInvitePreview(token, res) {
+  const whitelist = activeWhitelistFromToken(token);
+  if (!whitelist) return res.status(404).json({ code: "WHITELIST_INVITE_INVALID", error: "专属注册链接无效或已失效" });
+  return res.json({
+    phoneHint: String(whitelist.phone || "").replace(/^(\d{3})\d{4}(\d{4})$/, "$1****$2"),
+    primaryCourse: whitelist.primary_course || "english"
+  });
+}
+
 app.get("/api/referrals/preview", (req, res) => {
   return sendReferralPreview(req.query.token, res);
 });
@@ -2771,10 +2815,19 @@ app.post("/api/referrals/preview", (req, res) => {
   return sendReferralPreview(req.body?.token, res);
 });
 
+app.get("/api/whitelist-invitations/preview", (req, res) => {
+  return sendWhitelistInvitePreview(req.query.token, res);
+});
+
+app.post("/api/whitelist-invitations/preview", (req, res) => {
+  return sendWhitelistInvitePreview(req.body?.token, res);
+});
+
 app.post("/api/auth/register", limitRegisterIp, limitRegisterPhone, (req, res) => {
   const phone = normalizePhone(req.body.phone);
   const inviteCode = normalizeInvite(req.body.inviteCode);
   const referralTokenValue = String(req.body.referralToken || "").trim();
+  const whitelistTokenValue = String(req.body.whitelistToken || "").trim();
   const username = phone;
   const password = String(req.body.password || "");
   const nickname = phone.replace(/^(\d{3})\d{4}(\d{4})$/, "$1****$2");
@@ -2824,10 +2877,19 @@ app.post("/api/auth/register", limitRegisterIp, limitRegisterPhone, (req, res) =
     });
   }
 
-  if (!inviteCode) return res.status(400).json({ error: "请填写邀请码" });
-  const whitelist = db.prepare("SELECT * FROM phone_whitelist WHERE phone = ?").get(phone);
-  if (!whitelist || whitelist.status !== "unused") return res.status(400).json({ error: "手机号不在白名单或邀请码已失效" });
-  if (whitelist.invite_hash !== hashInvite(inviteCode)) return res.status(400).json({ error: "邀请码不正确" });
+  let whitelist;
+  if (whitelistTokenValue) {
+    whitelist = activeWhitelistFromToken(whitelistTokenValue);
+    if (!whitelist) return res.status(400).json({ code: "WHITELIST_INVITE_INVALID", error: "专属注册链接无效或已失效" });
+    if (whitelist.phone !== phone) {
+      return res.status(400).json({ code: "WHITELIST_PHONE_MISMATCH", error: "手机号与专属邀请不匹配" });
+    }
+  } else {
+    if (!inviteCode) return res.status(400).json({ error: "请填写邀请码" });
+    whitelist = db.prepare("SELECT * FROM phone_whitelist WHERE phone = ?").get(phone);
+    if (!whitelist || whitelist.status !== "unused") return res.status(400).json({ error: "手机号不在白名单或邀请码已失效" });
+    if (whitelist.invite_hash !== hashInvite(inviteCode)) return res.status(400).json({ error: "邀请码不正确" });
+  }
 
   const tx = db.transaction(() => {
     const socialName = uniqueSocialName();
@@ -3673,12 +3735,18 @@ app.get("/api/admin/whitelist", requireAdmin, (req, res) => {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
   const offset = (safePage - 1) * pageSize;
-  const rows = db.prepare(`
+  const rawRows = db.prepare(`
     SELECT id, phone, note, invite_display AS inviteCode, status, primary_course AS primaryCourse,
-           created_at, used_at, disabled_at
+           invite_hash AS inviteHash, created_at, used_at, disabled_at
     FROM phone_whitelist ORDER BY created_at DESC
     LIMIT ? OFFSET ?
   `).all(pageSize, offset);
+  const rows = rawRows.map(({ inviteHash, ...row }) => ({
+    ...row,
+    registrationUrl: row.status === "unused"
+      ? whitelistRegistrationUrl(req, { id: row.id, inviteHash })
+      : ""
+  }));
   return res.json({
     items: rows,
     page: safePage,
@@ -3723,7 +3791,7 @@ app.post("/api/admin/whitelist", requireAdmin, (req, res) => {
         status: "unused",
         primaryCourse,
         regenerated: true,
-        registrationUrl: `${publicAppOrigin(req)}/register`
+        registrationUrl: whitelistRegistrationUrl(req, { id: existing.id, inviteHash: hashInvite(code) })
       });
     }
 
@@ -3740,7 +3808,7 @@ app.post("/api/admin/whitelist", requireAdmin, (req, res) => {
       inviteCode: code,
       status: "unused",
       primaryCourse,
-      registrationUrl: `${publicAppOrigin(req)}/register`
+      registrationUrl: whitelistRegistrationUrl(req, { id: result.lastInsertRowid, inviteHash: hashInvite(code) })
     });
   } catch (error) {
     console.error("Failed to create whitelist invitation:", error.message);
@@ -4166,6 +4234,8 @@ module.exports = {
     publicAppOrigin,
     referralToken,
     referralUrl,
+    whitelistInviteToken,
+    whitelistRegistrationUrl,
     shanghaiDateKey,
     speakingEligibility,
     speakingProgressSummary,

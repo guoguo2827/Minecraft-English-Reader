@@ -147,6 +147,9 @@ test("admin can regenerate an unused or disabled whitelist invitation", async ()
   assert.equal(firstResponse.status, 200);
   const first = await firstResponse.json();
   assert.match(first.inviteCode, /^[A-Z2-9]{6}$/);
+  assert.match(first.registrationUrl, /\/register#invite=/);
+  const firstToken = new URLSearchParams(new URL(first.registrationUrl).hash.slice(1)).get("invite");
+  assert.ok(firstToken);
 
   const disableResponse = await fetch(`${baseUrl}/api/admin/whitelist/${first.id}`, {
     method: "PATCH",
@@ -165,10 +168,54 @@ test("admin can regenerate an unused or disabled whitelist invitation", async ()
   assert.equal(refreshed.id, first.id);
   assert.equal(refreshed.regenerated, true);
   assert.notEqual(refreshed.inviteCode, first.inviteCode);
+  assert.match(refreshed.registrationUrl, /\/register#invite=/);
+  const refreshedToken = new URLSearchParams(new URL(refreshed.registrationUrl).hash.slice(1)).get("invite");
+  assert.ok(refreshedToken);
+  assert.notEqual(refreshedToken, firstToken);
   assert.deepEqual(
     db.prepare("SELECT status, note, primary_course AS primaryCourse, invite_display AS inviteCode FROM phone_whitelist WHERE id = ?").get(first.id),
     { status: "unused", note: "Updated", primaryCourse: "chinese", inviteCode: refreshed.inviteCode }
   );
+
+  const expiredPreview = await fetch(`${baseUrl}/api/whitelist-invitations/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: firstToken })
+  });
+  assert.equal(expiredPreview.status, 404);
+
+  const previewResponse = await fetch(`${baseUrl}/api/whitelist-invitations/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: refreshedToken })
+  });
+  assert.equal(previewResponse.status, 200);
+  assert.deepEqual(await previewResponse.json(), { phoneHint: "136****0003", primaryCourse: "chinese" });
+
+  const mismatchResponse = await fetch(`${baseUrl}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone: "13600000004", password: "WhitelistPass123", whitelistToken: refreshedToken })
+  });
+  assert.equal(mismatchResponse.status, 400);
+  assert.equal((await mismatchResponse.json()).code, "WHITELIST_PHONE_MISMATCH");
+
+  const tokenRegistration = await fetch(`${baseUrl}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone, password: "WhitelistPass123", whitelistToken: refreshedToken })
+  });
+  assert.equal(tokenRegistration.status, 200);
+  assert.ok(tokenRegistration.headers.get("set-cookie"));
+  assert.equal(db.prepare("SELECT primary_course FROM users WHERE phone = ?").get(phone).primary_course, "chinese");
+  assert.equal(db.prepare("SELECT status FROM phone_whitelist WHERE id = ?").get(first.id).status, "used");
+
+  const usedPreview = await fetch(`${baseUrl}/api/whitelist-invitations/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: refreshedToken })
+  });
+  assert.equal(usedPreview.status, 404);
 
   const registeredResponse = await fetch(`${baseUrl}/api/admin/whitelist`, {
     method: "POST",
@@ -177,6 +224,25 @@ test("admin can regenerate an unused or disabled whitelist invitation", async ()
   });
   assert.equal(registeredResponse.status, 409);
   assert.equal((await registeredResponse.json()).code, "PHONE_ALREADY_REGISTERED");
+});
+
+test("legacy whitelist invitation codes remain compatible", async () => {
+  const phone = "13600000005";
+  const invitationResponse = await fetch(`${baseUrl}/api/admin/whitelist`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ phone, note: "Legacy code", primaryCourse: "english" })
+  });
+  assert.equal(invitationResponse.status, 200);
+  const invitation = await invitationResponse.json();
+
+  const registrationResponse = await fetch(`${baseUrl}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone, password: "LegacyInvite123", inviteCode: invitation.inviteCode })
+  });
+  assert.equal(registrationResponse.status, 200);
+  assert.equal(db.prepare("SELECT primary_course FROM users WHERE phone = ?").get(phone).primary_course, "english");
 });
 
 test("referral approval creates a free user and friendship atomically", async () => {
@@ -481,9 +547,14 @@ test("admin dashboard separates login, learning and historical totals", async ()
   const dashboardResponse = await fetch(`${baseUrl}/api/admin/dashboard`, { headers: { Cookie: adminCookie } });
   assert.equal(dashboardResponse.status, 200);
   const dashboard = await dashboardResponse.json();
-  assert.equal(dashboard.summary.loginUsers, 2, "admin login should be excluded");
+  const expectedLoginUsers = db.prepare(`
+    SELECT COUNT(DISTINCT d.user_id) AS count
+    FROM user_login_days d JOIN users u ON u.id = d.user_id
+    WHERE d.login_date = ? AND u.role != 'admin'
+  `).get(dashboard.date).count;
+  assert.equal(dashboard.summary.loginUsers, expectedLoginUsers, "admin login should be excluded");
   assert.equal(dashboard.summary.learningUsers, 1, "learning users should be unique across courses");
-  assert.equal(dashboard.summary.loggedOnlyUsers, 1);
+  assert.equal(dashboard.summary.loggedOnlyUsers, expectedLoginUsers - dashboard.summary.learningUsers);
   assert.ok(dashboard.summary.answers > 0);
   assert.equal(dashboard.courses.chinese.learningUsers, 0, "admin course activity should be excluded");
   assert.equal(dashboard.trend.length, 7);
@@ -499,7 +570,8 @@ test("admin dashboard separates login, learning and historical totals", async ()
   const historyResponse = await fetch(`${baseUrl}/api/admin/dashboard/history`, { headers: { Cookie: adminCookie } });
   assert.equal(historyResponse.status, 200);
   const history = await historyResponse.json();
-  assert.equal(history.overall.totalUsers, 2);
+  const expectedTotalUsers = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role != 'admin'").get().count;
+  assert.equal(history.overall.totalUsers, expectedTotalUsers);
   assert.equal(history.overall.learningUsers, 1);
   assert.equal(history.overall.studyDays, 1);
   assert.ok(history.overall.answers > 0);
