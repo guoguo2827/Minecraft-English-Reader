@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>注册 - Minecraft Reader</title>
   <link rel="stylesheet" href="/portal.css">
+  <style>
+    #registerForm[hidden], #registerForm [hidden], #invitePreview[hidden] {
+      display: none !important;
+    }
+  </style>
 </head>
 <body>
   <main class="portal">
@@ -62,7 +67,7 @@
       document.querySelector("#submitBtn").textContent = referralMode ? "Submit for Review" : "Register and Sign In";
       document.querySelector("#registerNotice").textContent = referralMode
         ? "The trial period does not start while your application is being reviewed."
-        : (whitelistLinkMode ? "No invitation code is required. This private link expires after registration." : "The invitation code expires immediately after successful registration.");
+        : (whitelistLinkMode ? "This private link expires after registration." : "The invitation code expires immediately after successful registration.");
       document.querySelector("#loginCopy").firstChild.textContent = "Already registered? ";
       document.querySelector("#loginLink").textContent = "Sign In";
       document.querySelector("#loginLink").href = "/login?next=%2Fchinese";
@@ -79,6 +84,7 @@
       }
       document.querySelector("#inviteCodeField").hidden = true;
       form.elements.inviteCode.required = false;
+      form.elements.inviteCode.disabled = true;
       if (referralMode) {
         document.querySelector("#registerKicker").textContent = "好友邀请";
         document.querySelector("#registerTitle").textContent = "申请免费体验";
@@ -90,7 +96,7 @@
         document.querySelector("#registerKicker").textContent = "管理员专属邀请";
         document.querySelector("#registerTitle").textContent = "完成注册";
         document.querySelector("#registerIntro").textContent = "邀请已验证，请填写受邀手机号并设置登录密码。";
-        document.querySelector("#registerNotice").textContent = "无需填写邀请码；注册成功后此专属链接自动失效。";
+        document.querySelector("#registerNotice").textContent = "注册成功后此专属链接自动失效。";
         document.querySelector("#submitBtn").textContent = "注册并登录";
       }
       const response = await fetch(referralMode ? "/api/referrals/preview" : "/api/whitelist-invitations/preview", {
