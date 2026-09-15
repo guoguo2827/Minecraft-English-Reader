@@ -29,6 +29,7 @@ pm2 stop minecraft-english-reader
 bash deploy/backup-sqlite.sh
 git pull --ff-only origin main
 npm ci --omit=dev
+npm run build:world
 npm run migrate
 pm2 restart minecraft-english-reader --update-env
 pm2 status

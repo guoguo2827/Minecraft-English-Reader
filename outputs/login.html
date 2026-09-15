@@ -30,7 +30,7 @@
     const registerLink = document.querySelector("#registerLink");
     const rememberKey = "minecraft-reader-login";
     const requestedNext = new URLSearchParams(location.search).get("next") || "";
-    const allowedNextPaths = new Set(["/", "/progress", "/chinese", "/chinese/progress", "/friends", "/access-status"]);
+    const allowedNextPaths = new Set(["/", "/progress", "/chinese", "/chinese/progress", "/friends", "/access-status", "/world"]);
     const nextPath = allowedNextPaths.has(requestedNext) ? requestedNext : "/";
     if (nextPath !== "/") registerLink.href = `/register?next=${encodeURIComponent(nextPath)}`;
     const englishUi = nextPath === "/chinese" || nextPath === "/chinese/progress";

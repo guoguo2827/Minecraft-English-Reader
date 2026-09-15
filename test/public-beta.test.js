@@ -90,8 +90,10 @@ test("incremental migration preserves existing user and adds public beta schema"
   assert.ok(db.prepare("SELECT version FROM schema_migrations WHERE version = ?")
     .get("2026-08-12-theme-single-pass-v1"));
   assert.ok(db.prepare("SELECT version FROM schema_migrations WHERE version = ?")
+    .get("2026-09-15-theme-practice-v1"));
+  assert.ok(db.prepare("SELECT version FROM schema_migrations WHERE version = ?")
     .get("2026-08-21-speaking-assessment-v1"));
-  for (const table of ["admin_audit_logs", "registration_applications", "referral_links", "friendships", "friend_pk_bonus_events", "user_login_days", "speaking_eligibility", "speaking_phrase_progress", "speaking_attempts", "speaking_theme_badges"]) {
+  for (const table of ["admin_audit_logs", "registration_applications", "referral_links", "friendships", "friend_pk_bonus_events", "user_login_days", "speaking_eligibility", "speaking_phrase_progress", "speaking_attempts", "speaking_theme_badges", "theme_practice_rounds", "theme_practice_round_items"]) {
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
   }
   assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_user_login_days_date'").get());
@@ -537,6 +539,163 @@ test("correct words leave the theme quiz and completion is reported", async () =
   assert.equal(chineseCompleted.themeId, chineseTheme.id);
 });
 
+test("completed English themes support resumable reward-free practice rounds", async () => {
+  const user = db.prepare("SELECT id FROM users WHERE role = 'admin'").get();
+  const themes = await fetch(`${baseUrl}/api/themes`, { headers: { Cookie: adminCookie } })
+    .then((response) => response.json());
+  const theme = themes.themes[0];
+  const timestamp = new Date().toISOString();
+  const upsertProgress = db.prepare(`
+    INSERT INTO word_progress (
+      user_id, theme_id, word, answer_count, correct_count, mastery_status, last_studied_at
+    ) VALUES (?, ?, ?, 1, 1, 'mastered', ?)
+    ON CONFLICT(user_id, theme_id, word)
+    DO UPDATE SET mastery_status = excluded.mastery_status, last_studied_at = excluded.last_studied_at
+  `);
+  for (const item of theme.items) upsertProgress.run(user.id, theme.id, item.word, timestamp);
+  db.prepare("DELETE FROM review_queue WHERE user_id = ? AND theme_id = ?").run(user.id, theme.id);
+  db.prepare(`
+    DELETE FROM theme_practice_round_items
+    WHERE round_id IN (SELECT id FROM theme_practice_rounds WHERE user_id = ? AND theme_id = ?)
+  `).run(user.id, theme.id);
+  db.prepare("DELETE FROM theme_practice_rounds WHERE user_id = ? AND theme_id = ?").run(user.id, theme.id);
+
+  db.prepare(`
+    UPDATE word_progress SET mastery_status = 'learning'
+    WHERE user_id = ? AND theme_id = ? AND word = ?
+  `).run(user.id, theme.id, theme.items[0].word);
+  const locked = await fetch(`${baseUrl}/api/quiz/practice/start`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ themeId: theme.id })
+  });
+  assert.equal(locked.status, 409);
+  assert.equal((await locked.json()).code, "THEME_NOT_COMPLETED");
+  db.prepare(`
+    UPDATE word_progress SET mastery_status = 'mastered'
+    WHERE user_id = ? AND theme_id = ? AND word = ?
+  `).run(user.id, theme.id, theme.items[0].word);
+
+  const formalSnapshot = () => ({
+    progress: db.prepare(`
+      SELECT word, answer_count, correct_count, mastery_status
+      FROM word_progress WHERE user_id = ? AND theme_id = ? ORDER BY word
+    `).all(user.id, theme.id),
+    reviews: db.prepare(`
+      SELECT word, status, consecutive_fix_count
+      FROM review_queue WHERE user_id = ? AND theme_id = ? ORDER BY word
+    `).all(user.id, theme.id),
+    reward: db.prepare(`
+      SELECT total_exp, today_exp, streak_correct, fixed_reviews
+      FROM user_rewards WHERE user_id = ?
+    `).get(user.id),
+    rewardEvents: db.prepare("SELECT COUNT(*) AS count FROM reward_events WHERE user_id = ?").get(user.id).count,
+    sessions: db.prepare(`
+      SELECT COALESCE(SUM(answer_count), 0) AS answers, COALESCE(SUM(correct_count), 0) AS correct
+      FROM study_sessions WHERE user_id = ?
+    `).get(user.id),
+    badges: db.prepare("SELECT COUNT(*) AS count FROM theme_badges WHERE user_id = ?").get(user.id).count,
+    friendBonuses: db.prepare("SELECT COUNT(*) AS count FROM friend_pk_bonus_events WHERE user_id = ?").get(user.id).count
+  });
+  const before = formalSnapshot();
+
+  const startedResponse = await fetch(`${baseUrl}/api/quiz/practice/start`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ themeId: theme.id })
+  });
+  assert.equal(startedResponse.status, 200);
+  const started = await startedResponse.json();
+  assert.equal(started.practice, true);
+  assert.equal(started.resumed, false);
+  assert.equal(started.round.totalWords, theme.items.length);
+  const roundId = started.round.id;
+
+  const first = await fetch(`${baseUrl}/api/quiz/practice/next`, {
+    method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ roundId })
+  }).then((response) => response.json());
+  const firstItem = theme.items.find((item) => item.word === first.word);
+  const wrongCn = first.options.find((option) => option !== firstItem.cn);
+  const wrongAnswer = await fetch(`${baseUrl}/api/quiz/practice/answer`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ roundId, word: first.word, selectedCn: wrongCn })
+  }).then((response) => response.json());
+  assert.equal(wrongAnswer.correct, false);
+  assert.deepEqual(wrongAnswer.rewardEvents, []);
+  assert.equal(wrongAnswer.rewardState, undefined);
+
+  const resumed = await fetch(`${baseUrl}/api/quiz/practice/start`, {
+    method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ themeId: theme.id })
+  }).then((response) => response.json());
+  assert.equal(resumed.resumed, true);
+  assert.equal(resumed.round.id, roundId);
+
+  const resumedQuestion = await fetch(`${baseUrl}/api/quiz/practice/next`, {
+    method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ roundId })
+  }).then((response) => response.json());
+  const sameQuestion = await fetch(`${baseUrl}/api/quiz/practice/next`, {
+    method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ roundId })
+  }).then((response) => response.json());
+  assert.equal(sameQuestion.word, resumedQuestion.word);
+  assert.equal(sameQuestion.questionNo, resumedQuestion.questionNo);
+  assert.deepEqual(sameQuestion.options, resumedQuestion.options);
+
+  const staleResponse = await fetch(`${baseUrl}/api/quiz/practice/answer`, {
+    method: "POST",
+    headers: authHeaders(adminCookie),
+    body: JSON.stringify({ roundId, word: first.word, selectedCn: firstItem.cn })
+  });
+  assert.equal(staleResponse.status, 409);
+  assert.equal((await staleResponse.json()).code, "PRACTICE_QUESTION_STALE");
+
+  const seenWords = new Set([first.word]);
+  let interveningQuestions = 0;
+  let firstRetryGap = null;
+  let question = resumedQuestion;
+  let completed;
+  for (let guard = 0; guard < theme.items.length * 3; guard += 1) {
+    const item = theme.items.find((candidate) => candidate.word === question.word);
+    assert.ok(item, `unknown practice word: ${question.word}`);
+    seenWords.add(question.word);
+    if (question.word === first.word && firstRetryGap === null) firstRetryGap = interveningQuestions;
+    else if (firstRetryGap === null) interveningQuestions += 1;
+    const answerResponse = await fetch(`${baseUrl}/api/quiz/practice/answer`, {
+      method: "POST",
+      headers: authHeaders(adminCookie),
+      body: JSON.stringify({ roundId, word: question.word, selectedCn: item.cn })
+    });
+    assert.equal(answerResponse.status, 200);
+    assert.equal((await answerResponse.json()).correct, true);
+
+    const nextResponse = await fetch(`${baseUrl}/api/quiz/practice/next`, {
+      method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ roundId })
+    });
+    assert.equal(nextResponse.status, 200);
+    const next = await nextResponse.json();
+    if (next.completed) {
+      completed = next;
+      break;
+    }
+    question = next;
+  }
+
+  assert.ok(completed, "practice round should complete");
+  assert.equal(seenWords.size, theme.items.length);
+  assert.ok(firstRetryGap >= 3 && firstRetryGap <= 5, `retry gap was ${firstRetryGap}`);
+  assert.equal(completed.round.firstTryCorrect, theme.items.length - 1);
+  assert.equal(completed.round.weakWords, 1);
+  assert.equal(completed.round.totalAttempts, theme.items.length + 1);
+  assert.equal(completed.round.accuracy, Math.round(((theme.items.length - 1) / theme.items.length) * 100));
+  assert.deepEqual(formalSnapshot(), before, "practice must not change formal learning or reward data");
+
+  const nextRound = await fetch(`${baseUrl}/api/quiz/practice/start`, {
+    method: "POST", headers: authHeaders(adminCookie), body: JSON.stringify({ themeId: theme.id })
+  }).then((response) => response.json());
+  assert.equal(nextRound.resumed, false);
+  assert.notEqual(nextRound.round.id, roundId);
+});
+
 test("admin dashboard separates login, learning and historical totals", async () => {
   const failedLogin = await login("13900000001", "WrongPassword123");
   assert.equal(failedLogin.response.status, 401);
@@ -795,4 +954,14 @@ test("learning pages delay automatic question speech and handle theme completion
     assert.match(html, /function showThemeComplete/);
     assert.match(html, /data\?\.completed/);
   }
+});
+
+test("English learning page exposes the completed-theme practice flow", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "outputs", "index.html"), "utf8");
+  assert.match(html, /id="practiceThemeBtn"/);
+  assert.match(html, /\/api\/quiz\/practice\/start/);
+  assert.match(html, /\/api\/quiz\/practice\/next/);
+  assert.match(html, /\/api\/quiz\/practice\/answer/);
+  assert.match(html, /本轮巩固完成/);
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname, "..", "outputs", "core-words-cn.html"), "utf8"), /\/api\/quiz\/practice\/start/);
 });

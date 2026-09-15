@@ -3,19 +3,31 @@
   "version": "1.0.0",
   "private": true,
   "description": "A small private Minecraft English reader with account, invite, progress, and review queue support.",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "server.js",
   "scripts": {
+    "build:world": "node scripts/build-world.js",
+    "prestart": "npm run build:world",
+    "predev": "npm run build:world",
     "start": "node server.js",
     "dev": "node server.js",
     "check": "node --check server.js && node --test",
     "migrate": "node scripts/migrate.js"
   },
   "dependencies": {
+    "@dimforge/rapier3d-compat": "0.20.0",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "13.0.3",
     "dotenv": "^16.4.7",
+    "esbuild": "0.28.2",
     "express": "^4.19.2",
-    "express-session": "^1.18.1"
+    "express-session": "^1.18.1",
+    "lucide": "1.42.0",
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
   }
 }

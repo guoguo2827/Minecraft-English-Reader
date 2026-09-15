@@ -1,0 +1,81 @@
+"use strict";
+const { chromium } = require("@playwright/test");
+const assert = require("node:assert/strict");
+const path = require("node:path");
+const crypto = require("node:crypto");
+const C = require("../lib/world-content");
+const {createAccount}=require("./world-qa-fixture.cjs");
+const base="http://127.0.0.1:3137", out=path.resolve(__dirname,"../work/world-qa");
+(async()=>{
+  const browser=await chromium.launch({channel:"chrome",headless:true});
+  try {
+    const context=await browser.newContext({viewport:{width:1440,height:900}});
+    const credentials=createAccount(base);
+    const page=await context.newPage(),pageErrors=[];
+    page.on("pageerror",e=>pageErrors.push(e.message));
+    await page.route("**/api/world/audio/**",r=>r.fulfill({status:503,contentType:"application/json",body:'{"error":"QA no TTS"}'}));
+    const bootstrap=()=>context.request.get(`${base}/api/world/bootstrap`,{maxRetries:2}).then(r=>r.json());
+    await page.goto(`${base}/world`);assert.ok(page.url().includes("/login?next=%2Fworld"));
+    await page.locator('[name="phone"]').fill(credentials.phone);await page.locator('[name="password"]').fill(credentials.password);
+    await page.locator("#loginButton").click();await page.waitForURL(`${base}/world`);
+    await page.locator("#startBtn:not([disabled])").waitFor({timeout:60000});await page.locator("#startBtn").click();
+    console.log("PASS: unauthenticated world entry returns to the camp after login");
+    await page.locator("#learnBtn").click();
+    const next=page.waitForResponse(r=>r.url().endsWith("/learning/next"));await page.locator("#beginQuiz").click();const q=await (await next).json();
+    await page.locator("[data-answer]").first().waitFor();
+    let answerCalls=0,dropAnswer=true;
+    await page.route("**/api/world/learning/answer",async route=>{
+      answerCalls++;
+      if(dropAnswer){dropAnswer=false;await route.fetch();await route.abort("failed");}else await route.continue();
+    });
+    const correct=C.WORDS.find(w=>w.id===q.wordId).cn;
+    await page.locator(`[data-answer="${correct}"]`).evaluate(button=>{button.click();button.click();});
+    await page.locator("#networkBanner:not([hidden])").waitFor();
+    assert.equal(answerCalls,1);
+    const committed=await bootstrap();assert.equal(committed.words.find(w=>w.id===q.wordId).mastered,true);
+    assert.equal(await page.locator("#quizFeedback").evaluate(n=>n.classList.contains("success")),false);
+    await page.screenshot({path:path.join(out,"answer-response-lost.png")});
+    await page.locator("#retryNetwork").click();
+    await page.locator("[data-read]").first().waitFor();
+    assert.equal(answerCalls,2);assert.equal((await bootstrap()).version,committed.version);
+    console.log("PASS: double click, answer response loss, idempotent recovery");
+
+    await page.unroute("**/api/world/learning/answer");
+    const wrongNext=page.waitForResponse(r=>r.url().endsWith("/learning/next"));await page.locator("#beginQuiz").click();const wrongQ=await (await wrongNext).json();
+    const wrong=wrongQ.options.find(o=>o.value!==C.WORDS.find(w=>w.id===wrongQ.wordId).cn).value;
+    await page.locator(`[data-answer="${wrong}"]`).click();await page.locator("#quizNext:not([hidden])").waitFor();
+    await page.waitForTimeout(1800);assert.equal(await page.locator("[data-answer].wrong").count(),1);assert.equal(await page.locator("#quizNext").isVisible(),true);
+    const manualNext=page.waitForResponse(r=>r.url().endsWith("/learning/next"));await page.locator("#quizNext").click();const reviewQ=await (await manualNext).json();
+    const autoNext=page.waitForResponse(r=>r.url().endsWith("/learning/next"));
+    const submittedAt=Date.now();await page.locator(`[data-answer="${C.WORDS.find(w=>w.id===reviewQ.wordId).cn}"]`).click();
+    await autoNext;assert.ok(Date.now()-submittedAt>=900,"correct feedback must remain for one second");
+    const spokenAt=page.waitForResponse(r=>r.url().includes("/api/world/audio/word-"));await spokenAt;
+    assert.ok(Date.now()-submittedAt>=2300,"the next question must wait before speaking");
+    console.log("PASS: correct answer feedback, automatic next question and delayed speech");
+    await page.locator("#closePanel").click();await page.locator("#pauseBtn").click();
+    let actionCalls=0,dropAction=true;
+    await page.route("**/api/world/actions",async route=>{
+      actionCalls++;
+      if(dropAction){dropAction=false;await route.fetch();await route.abort("failed");}else await route.continue();
+    });
+    await page.locator("#syncSave").click();await page.locator("#networkBanner:not([hidden])").waitFor();
+    const afterWrite=await bootstrap();assert.equal(actionCalls,1);
+    await page.locator("#retryNetwork").click();await page.locator("#networkBanner").waitFor({state:"hidden"});
+    assert.equal((await bootstrap()).version,afterWrite.version);assert.equal(actionCalls,2);
+    await page.unroute("**/api/world/actions");
+    console.log("PASS: wrong answers wait for manual continuation; lost save response is not replayed twice");
+
+    const external=await context.request.post(`${base}/api/world/actions`,{data:{type:"checkpoint",operationId:crypto.randomUUID(),version:afterWrite.version,position:C.SPAWN}});assert.equal(external.status(),200);
+    const conflict=page.waitForResponse(r=>r.url().endsWith("/actions")&&r.status()===409);
+    await page.locator("#syncSave").click();await conflict;
+    await page.waitForFunction(()=>document.getElementById("saveStatus").textContent.includes("云端已保存"));
+    assert.equal((await bootstrap()).version,afterWrite.version+2);
+    await context.setOffline(true);await page.locator("#networkBanner:not([hidden])").waitFor();
+    await context.setOffline(false);await page.locator("#networkBanner").waitFor({state:"hidden"});
+    await page.reload();await page.locator("#startBtn:not([disabled])").waitFor();await page.locator("#startBtn").click();
+    assert.equal(await page.locator("#wordCount").innerText(),"1 / 8");
+    assert.deepEqual(pageErrors,[]);
+    console.log("PASS: cross-window version conflict, offline recovery, refresh preserves mastery");
+    await context.close();
+  } finally { await browser.close(); }
+})().catch(e=>{console.error(e);process.exitCode=1;});

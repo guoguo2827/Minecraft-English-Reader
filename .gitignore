@@ -1,6 +1,9 @@
 .codex/
 .agents/
 node_modules/
+outputs/world-assets/
+work/world-preview/
+work/world-qa/
 data/
 backups/
 .env

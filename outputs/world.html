@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#eaf5f4">
+  <title>英语建造营地</title>
+  <link rel="stylesheet" href="/world.css?v=camp1">
+</head>
+<body>
+  <main id="camp" aria-label="英语建造营地">
+    <canvas id="worldCanvas" tabindex="0" aria-label="营地三维场景"></canvas>
+    <div class="scene-vignette"></div>
+    <header class="hud topbar">
+      <a class="brand" href="/" aria-label="返回英语学习"><span class="brand-mark"><i data-lucide="blocks"></i></span><span>英语建造营地<small>ENGLISH CAMP</small></span></a>
+      <div class="camp-location"><span class="sun-dot"></span>晨光小岛<span class="divider">/</span><span id="compass">N</span></div>
+      <div class="header-tools">
+        <span id="saveStatus" role="status"><i data-lucide="cloud-check"></i><span>连接营地中</span></span>
+        <button id="muteBtn" class="icon-btn" title="关闭标准音" aria-label="关闭标准音"><i data-lucide="volume-2"></i></button>
+        <button id="pauseBtn" class="icon-btn" title="暂停" aria-label="暂停"><i data-lucide="pause"></i></button>
+      </div>
+    </header>
+
+    <aside class="hud quest-panel" id="questPanel" hidden>
+      <div class="eyebrow"><span class="tiny-square"></span>第一章 · 我的营地 <span id="badgeCount"></span></div>
+      <h1 id="questTitle">认识营地的材料</h1>
+      <p id="questDetail"></p>
+      <div class="word-meter"><span>营地词汇</span><strong id="wordCount">0 <small>/ 8</small></strong></div>
+      <div id="wordDots" class="word-dots" aria-label="单词掌握进度"></div>
+      <button id="learnBtn" class="primary"><i data-lucide="book-open"></i><span>学习营地单词</span><i data-lucide="arrow-up-right"></i></button>
+      <div class="quest-divider"></div>
+      <div class="phrase-row"><p id="phraseText">Place the block.</p><button id="speakBtn" class="icon-btn" title="重播任务语音" aria-label="重播任务语音"><i data-lucide="volume-2"></i></button></div>
+      <button id="translationBtn" class="text-btn">查看中文提示<i data-lucide="chevron-down"></i></button>
+      <p id="phraseChinese" class="translation" hidden></p>
+      <p id="audioStatus" class="audio-status" role="status"></p>
+      <div id="houseProgress" class="house-progress" hidden></div>
+    </aside>
+
+    <div id="crosshair" aria-hidden="true"><span></span><span></span></div>
+    <div class="hud target-tip" id="targetTip" hidden></div>
+    <div class="hud compass-marker" id="waypoint" hidden><i data-lucide="map-pin"></i><span></span></div>
+
+    <div class="hud side-tools" id="sideTools" hidden>
+      <button id="guideBtn" class="icon-btn active" title="显示或隐藏建筑轮廓" aria-label="显示或隐藏建筑轮廓" aria-pressed="true"><i data-lucide="scan"></i></button>
+      <button id="craftBtn" class="icon-btn" title="合成配方" aria-label="合成配方"><i data-lucide="hammer"></i></button>
+      <button id="inventoryBtn" class="icon-btn" title="背包" aria-label="背包"><i data-lucide="backpack"></i></button>
+    </div>
+    <div class="hud bottom-bar" id="bottomBar" hidden>
+      <div class="selection-label" id="selectionLabel">木板 <span>PLANKS</span></div>
+      <div id="hotbar" class="hotbar" aria-label="快捷物品栏"></div>
+    </div>
+    <div class="hud touch-controls" id="touchControls" hidden>
+      <div class="joystick" id="joystick" aria-label="移动摇杆"><div class="joystick-cross"></div><div id="joystickKnob"></div></div>
+      <div class="touch-actions">
+        <button id="jumpBtn" title="跳跃" aria-label="跳跃"><i data-lucide="arrow-up"></i></button>
+        <button id="useBtn" title="使用或放置" aria-label="使用或放置"><i data-lucide="hand"></i></button>
+        <button id="removeBtn" title="收回自建方块" aria-label="收回自建方块"><i data-lucide="pickaxe"></i></button>
+      </div>
+    </div>
+    <div id="toast" class="hud toast" role="status" hidden></div>
+    <div class="hud network-banner" id="networkBanner" role="alert" hidden><span>连接中断，改动尚未确认</span><button id="retryNetwork" class="text-btn">重新连接</button></div>
+
+    <section class="welcome" id="welcome">
+      <div class="welcome-copy"><span class="chapter-tag">CHAPTER 01</span><h2>我的第一座<br>英语营地</h2><p id="welcomeStatus">正在唤醒晨光小岛...</p><button id="startBtn" class="primary" disabled><i data-lucide="play"></i><span>进入营地</span></button><a href="/" class="welcome-back">返回单词学习</a></div>
+    </section>
+    <dialog id="panel" aria-labelledby="panelTitle"><div class="panel-top"><div><span class="eyebrow" id="panelKicker">ENGLISH CAMP</span><h2 id="panelTitle"></h2></div><button id="closePanel" class="icon-btn" title="返回营地" aria-label="返回营地"><i data-lucide="x"></i></button></div><div id="panelBody"></div></dialog>
+    <div class="portrait-note" role="status"><i data-lucide="rotate-ccw"></i><strong>横过来，看看整个营地</strong><a href="/">返回单词学习</a></div>
+  </main>
+  <script type="module" src="/world-assets/camp.js?v=camp1"></script>
+  <script>window.addEventListener("error", function(event) { if (event.target && event.target.tagName === "SCRIPT") { document.getElementById("welcomeStatus").textContent = "营地资源暂时无法加载，请刷新重试"; } }, true);</script>
+</body>
+</html>

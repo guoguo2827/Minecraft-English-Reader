@@ -10,6 +10,8 @@ const bcrypt = require("bcryptjs");
 const Database = require("better-sqlite3");
 const createSqliteSessionStore = require("./lib/sqlite-session-store");
 const { createWindowCounter, rateLimitMiddleware } = require("./lib/rate-limit");
+const { migrateWorld, accessError: worldAccessError, createWorldService } = require("./lib/world-service");
+const createWorldRouter = require("./lib/world-router");
 
 const app = express();
 const rootDir = __dirname;
@@ -509,6 +511,52 @@ function applySinglePassQuizMigration() {
   })();
 }
 
+function applyThemePracticeMigration() {
+  const version = "2026-09-15-theme-practice-v1";
+  if (migrationApplied(version)) return;
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS theme_practice_rounds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        theme_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        total_words INTEGER NOT NULL,
+        first_try_correct INTEGER NOT NULL DEFAULT 0,
+        total_attempts INTEGER NOT NULL DEFAULT 0,
+        question_no INTEGER NOT NULL DEFAULT 0,
+        current_word TEXT,
+        current_options_json TEXT,
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS theme_practice_round_items (
+        round_id INTEGER NOT NULL,
+        word TEXT NOT NULL,
+        order_no INTEGER NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        first_try_correct INTEGER,
+        status TEXT NOT NULL DEFAULT 'pending',
+        due_question_no INTEGER,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(round_id, word),
+        FOREIGN KEY(round_id) REFERENCES theme_practice_rounds(id)
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_theme_practice_active_round
+        ON theme_practice_rounds(user_id, theme_id) WHERE status = 'active';
+      CREATE INDEX IF NOT EXISTS idx_theme_practice_round_history
+        ON theme_practice_rounds(user_id, theme_id, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_theme_practice_items_next
+        ON theme_practice_round_items(round_id, status, due_question_no, order_no);
+    `);
+    markMigration(version);
+  })();
+}
+
 function applySpeakingMigration() {
   const version = "2026-08-21-speaking-assessment-v1";
   if (migrationApplied(version)) return;
@@ -789,7 +837,9 @@ function initDb() {
   applyThreeCorrectReviewMigration();
   applyAdminDashboardMigration();
   applySinglePassQuizMigration();
+  applyThemePracticeMigration();
   applySpeakingMigration();
+  migrateWorld(db);
 }
 
 function ensureAdmin() {
@@ -1098,7 +1148,8 @@ function publicUser(user) {
       chinese: allowedThemeIds(user, "chinese")
     },
     accessControlEnforced,
-    passwordResetRequired: Boolean(user.password_reset_required)
+    passwordResetRequired: Boolean(user.password_reset_required),
+    worldAvailable: !worldAccessError(user)
   };
 }
 
@@ -1130,7 +1181,7 @@ function requireAuth(req, res, next) {
 
 function requirePasswordReadyPage(req, res, next) {
   const user = currentUser(req);
-  const returnPath = ["/progress", "/chinese", "/chinese/progress", "/friends", "/access-status", "/speaking"].includes(req.path) ? req.path : "";
+  const returnPath = ["/progress", "/chinese", "/chinese/progress", "/friends", "/access-status", "/speaking", "/world"].includes(req.path) ? req.path : "";
   const suffix = returnPath ? `?next=${encodeURIComponent(returnPath)}` : "";
   if (!user) return res.redirect(`/login${suffix}`);
   if (user.password_reset_required) return res.redirect(`/reset-password${suffix}`);
@@ -1353,6 +1404,225 @@ function answerQuiz(userId, themeId, word, selectedCn) {
     correctCn: item.cn,
     ...rewardAnswer(userId, theme, word, correct, hadActiveReview, fixedReview)
   };
+}
+
+function themePracticeError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function getThemePracticeRound(userId, roundId) {
+  const id = Number(roundId);
+  if (!Number.isInteger(id) || id <= 0) throw themePracticeError("PRACTICE_ROUND_INVALID", "巩固轮次无效");
+  const round = db.prepare("SELECT * FROM theme_practice_rounds WHERE id = ? AND user_id = ?").get(id, userId);
+  if (!round) throw themePracticeError("PRACTICE_ROUND_INVALID", "巩固轮次不存在或已失效");
+  return round;
+}
+
+function themePracticeSummary(round) {
+  const counts = db.prepare(`
+    SELECT COUNT(*) AS totalWords,
+           SUM(CASE WHEN first_try_correct IS NOT NULL THEN 1 ELSE 0 END) AS answeredWords,
+           SUM(CASE WHEN first_try_correct = 0 THEN 1 ELSE 0 END) AS weakWords,
+           SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END) AS passedWords
+    FROM theme_practice_round_items
+    WHERE round_id = ?
+  `).get(round.id);
+  const totalWords = Number(counts.totalWords || round.total_words || 0);
+  const firstTryCorrect = Number(round.first_try_correct || 0);
+  return {
+    id: round.id,
+    themeId: round.theme_id,
+    status: round.status,
+    totalWords,
+    answeredWords: Number(counts.answeredWords || 0),
+    passedWords: Number(counts.passedWords || 0),
+    firstTryCorrect,
+    weakWords: Number(counts.weakWords || 0),
+    totalAttempts: Number(round.total_attempts || 0),
+    accuracy: totalWords ? Math.round((firstTryCorrect / totalWords) * 100) : 0,
+    startedAt: round.started_at,
+    completedAt: round.completed_at || null
+  };
+}
+
+function themeIsReadyForPractice(userId, theme) {
+  const mastered = db.prepare(`
+    SELECT COUNT(*) AS count FROM word_progress
+    WHERE user_id = ? AND theme_id = ? AND mastery_status = 'mastered'
+  `).get(userId, theme.id).count;
+  const activeReviews = db.prepare(`
+    SELECT COUNT(*) AS count FROM review_queue
+    WHERE user_id = ? AND theme_id = ? AND status = 'active'
+  `).get(userId, theme.id).count;
+  return mastered >= theme.items.length && activeReviews === 0;
+}
+
+function startThemePracticeRound(userId, themeId) {
+  const theme = themeMap.get(themeId);
+  if (!theme) throw themePracticeError("PRACTICE_THEME_INVALID", "未知主题");
+  const existing = db.prepare(`
+    SELECT * FROM theme_practice_rounds
+    WHERE user_id = ? AND theme_id = ? AND status = 'active'
+    ORDER BY id DESC LIMIT 1
+  `).get(userId, themeId);
+  if (existing) return { practice: true, resumed: true, round: themePracticeSummary(existing) };
+  if (!themeIsReadyForPractice(userId, theme)) {
+    throw themePracticeError("THEME_NOT_COMPLETED", "完成本主题全部单词后才能开始巩固练习");
+  }
+
+  return db.transaction(() => {
+    const timestamp = now();
+    const result = db.prepare(`
+      INSERT INTO theme_practice_rounds (
+        user_id, theme_id, status, total_words, started_at, updated_at
+      ) VALUES (?, ?, 'active', ?, ?, ?)
+    `).run(userId, themeId, theme.items.length, timestamp, timestamp);
+    const roundId = Number(result.lastInsertRowid);
+    const insertItem = db.prepare(`
+      INSERT INTO theme_practice_round_items (
+        round_id, word, order_no, status, updated_at
+      ) VALUES (?, ?, ?, 'pending', ?)
+    `);
+    shuffle(theme.items).forEach((item, index) => {
+      insertItem.run(roundId, item.word, index + 1, timestamp);
+    });
+    const round = db.prepare("SELECT * FROM theme_practice_rounds WHERE id = ?").get(roundId);
+    return { practice: true, resumed: false, round: themePracticeSummary(round) };
+  })();
+}
+
+function themePracticeQuestion(round, theme, word, options) {
+  return {
+    practice: true,
+    roundId: round.id,
+    questionNo: round.question_no,
+    themeId: round.theme_id,
+    word,
+    options
+  };
+}
+
+function nextThemePracticeQuestion(userId, roundId) {
+  return db.transaction(() => {
+    let round = getThemePracticeRound(userId, roundId);
+    const theme = themeMap.get(round.theme_id);
+    if (!theme) throw themePracticeError("PRACTICE_THEME_INVALID", "巩固主题不存在");
+    if (round.status === "completed") {
+      return { practice: true, completed: true, round: themePracticeSummary(round) };
+    }
+    if (round.status !== "active") throw themePracticeError("PRACTICE_ROUND_INVALID", "巩固轮次已失效");
+
+    if (round.current_word) {
+      const current = theme.items.find((item) => item.word === round.current_word);
+      const options = JSON.parse(round.current_options_json || "[]");
+      if (current && Array.isArray(options) && options.length === 4) {
+        return themePracticeQuestion(round, theme, current.word, options);
+      }
+      db.prepare(`
+        UPDATE theme_practice_rounds
+        SET current_word = NULL, current_options_json = NULL, updated_at = ?
+        WHERE id = ?
+      `).run(now(), round.id);
+      round = db.prepare("SELECT * FROM theme_practice_rounds WHERE id = ?").get(round.id);
+    }
+
+    const nextQuestionNo = round.question_no + 1;
+    let item = db.prepare(`
+      SELECT * FROM theme_practice_round_items
+      WHERE round_id = ? AND status = 'retry' AND due_question_no <= ?
+      ORDER BY due_question_no, order_no LIMIT 1
+    `).get(round.id, nextQuestionNo);
+    if (!item) {
+      item = db.prepare(`
+        SELECT * FROM theme_practice_round_items
+        WHERE round_id = ? AND status = 'pending'
+        ORDER BY order_no LIMIT 1
+      `).get(round.id);
+    }
+    if (!item) {
+      item = db.prepare(`
+        SELECT * FROM theme_practice_round_items
+        WHERE round_id = ? AND status = 'retry'
+        ORDER BY due_question_no, order_no LIMIT 1
+      `).get(round.id);
+    }
+    if (!item) {
+      const timestamp = now();
+      db.prepare(`
+        UPDATE theme_practice_rounds
+        SET status = 'completed', completed_at = ?, updated_at = ?
+        WHERE id = ? AND status = 'active'
+      `).run(timestamp, timestamp, round.id);
+      round = db.prepare("SELECT * FROM theme_practice_rounds WHERE id = ?").get(round.id);
+      return { practice: true, completed: true, round: themePracticeSummary(round) };
+    }
+
+    const questionItem = theme.items.find((candidate) => candidate.word === item.word);
+    if (!questionItem) throw themePracticeError("PRACTICE_WORD_INVALID", "巩固单词不存在");
+    const wrongPool = shuffle(theme.items.filter((candidate) => candidate.cn !== questionItem.cn)).slice(0, 3);
+    const options = shuffle([questionItem, ...wrongPool]).map((candidate) => candidate.cn);
+    const timestamp = now();
+    db.prepare(`
+      UPDATE theme_practice_rounds
+      SET question_no = ?, current_word = ?, current_options_json = ?, updated_at = ?
+      WHERE id = ?
+    `).run(nextQuestionNo, questionItem.word, JSON.stringify(options), timestamp, round.id);
+    round = db.prepare("SELECT * FROM theme_practice_rounds WHERE id = ?").get(round.id);
+    return themePracticeQuestion(round, theme, questionItem.word, options);
+  })();
+}
+
+function answerThemePracticeQuestion(userId, roundId, word, selectedCn) {
+  return db.transaction(() => {
+    const round = getThemePracticeRound(userId, roundId);
+    if (round.status !== "active") throw themePracticeError("PRACTICE_ROUND_COMPLETE", "本轮巩固已经完成");
+    if (!round.current_word || round.current_word !== word) {
+      throw themePracticeError("PRACTICE_QUESTION_STALE", "本题已提交，请继续下一题");
+    }
+    const theme = themeMap.get(round.theme_id);
+    const questionItem = theme?.items.find((item) => item.word === word);
+    if (!questionItem) throw themePracticeError("PRACTICE_WORD_INVALID", "巩固单词不存在");
+    const roundItem = db.prepare(`
+      SELECT * FROM theme_practice_round_items WHERE round_id = ? AND word = ?
+    `).get(round.id, word);
+    if (!roundItem || roundItem.status === "passed") {
+      throw themePracticeError("PRACTICE_QUESTION_STALE", "本题已提交，请继续下一题");
+    }
+
+    const correct = questionItem.cn === selectedCn;
+    const firstAttempt = roundItem.attempt_count === 0;
+    const firstTryIncrement = firstAttempt && correct ? 1 : 0;
+    const firstTryCorrect = firstAttempt ? (correct ? 1 : 0) : roundItem.first_try_correct;
+    const status = correct ? "passed" : "retry";
+    const dueQuestionNo = correct ? null : round.question_no + crypto.randomInt(4, 7);
+    const timestamp = now();
+    db.prepare(`
+      UPDATE theme_practice_round_items
+      SET attempt_count = attempt_count + 1,
+          first_try_correct = ?, status = ?, due_question_no = ?, updated_at = ?
+      WHERE round_id = ? AND word = ?
+    `).run(firstTryCorrect, status, dueQuestionNo, timestamp, round.id, word);
+    db.prepare(`
+      UPDATE theme_practice_rounds
+      SET first_try_correct = first_try_correct + ?,
+          total_attempts = total_attempts + 1,
+          current_word = NULL,
+          current_options_json = NULL,
+          updated_at = ?
+      WHERE id = ?
+    `).run(firstTryIncrement, timestamp, round.id);
+    const updatedRound = db.prepare("SELECT * FROM theme_practice_rounds WHERE id = ?").get(round.id);
+    return {
+      practice: true,
+      roundId: round.id,
+      correct,
+      correctCn: questionItem.cn,
+      rewardEvents: [],
+      round: themePracticeSummary(updatedRound)
+    };
+  })();
 }
 
 function progressSummary(userId) {
@@ -2781,6 +3051,14 @@ app.get("/reset-password", requirePageAuth, (req, res) => {
 });
 app.get("/progress", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "progress.html")));
 app.get("/speaking", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "speaking.html")));
+app.get("/world", requirePasswordReadyPage, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  return res.sendFile(path.join(publicDir, "world.html"));
+});
+app.use("/api/world", requireAuth, createWorldRouter({
+  service: createWorldService({ db, answerQuiz, getQuizState, upsertReadProgress, rewardRead }),
+  speakingItems, ensureTtsAudio, getTencentVoiceType, limitTtsUser, limitTtsIp, ttsGenerationCounter
+}));
 app.get("/", requireStudyPage("english"), (req, res) => res.sendFile(path.join(publicDir, "index.html")));
 app.get("/chinese", requireStudyPage("chinese"), (req, res) => res.sendFile(path.join(publicDir, "core-words-cn.html")));
 app.get("/chinese/progress", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "chinese-progress.html")));
@@ -3199,6 +3477,47 @@ app.post(
     }
   }
 );
+
+function sendThemePracticeError(res, error) {
+  const conflictCodes = new Set(["THEME_NOT_COMPLETED", "PRACTICE_QUESTION_STALE", "PRACTICE_ROUND_COMPLETE"]);
+  const status = conflictCodes.has(error.code) ? 409 : 400;
+  return res.status(status).json({ code: error.code || "PRACTICE_ERROR", error: error.message });
+}
+
+app.post("/api/quiz/practice/start", requireAuth, (req, res) => {
+  try {
+    const themeId = String(req.body.themeId || "");
+    if (!enforceLearningAccess(req, res, "english", themeId)) return;
+    return res.json(startThemePracticeRound(req.user.id, themeId));
+  } catch (error) {
+    return sendThemePracticeError(res, error);
+  }
+});
+
+app.post("/api/quiz/practice/next", requireAuth, (req, res) => {
+  try {
+    const round = getThemePracticeRound(req.user.id, req.body.roundId);
+    if (!enforceLearningAccess(req, res, "english", round.theme_id)) return;
+    return res.json(nextThemePracticeQuestion(req.user.id, round.id));
+  } catch (error) {
+    return sendThemePracticeError(res, error);
+  }
+});
+
+app.post("/api/quiz/practice/answer", requireAuth, (req, res) => {
+  try {
+    const round = getThemePracticeRound(req.user.id, req.body.roundId);
+    if (!enforceLearningAccess(req, res, "english", round.theme_id)) return;
+    return res.json(answerThemePracticeQuestion(
+      req.user.id,
+      round.id,
+      String(req.body.word || ""),
+      String(req.body.selectedCn || "")
+    ));
+  } catch (error) {
+    return sendThemePracticeError(res, error);
+  }
+});
 
 app.post("/api/quiz/next", requireAuth, (req, res) => {
   try {

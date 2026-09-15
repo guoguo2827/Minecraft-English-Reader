@@ -35,6 +35,7 @@ npm start
 - 管理后台：http://127.0.0.1:3000/admin
 - 好友页：http://127.0.0.1:3000/friends
 - 英语口语测评：http://127.0.0.1:3000/speaking
+- 英语建造营地：http://127.0.0.1:3000/world
 
 首次启动会自动创建管理员账号。默认值来自 `.env.example`，上线前必须修改 `ADMIN_PASSWORD` 和 `SESSION_SECRET`。
 
@@ -44,6 +45,16 @@ npm start
 
 `mobile-app` 是独立的 Capacitor Android 容器，只通过 HTTPS 加载现有线上服务，不包含业务数据库，也不会改变网页端 API。调试构建、正式签名和真机验收步骤见 `mobile-app/README.md`。
 
+## 英语建造营地
+
+独立第一人称单人营地，使用 Three.js、Rapier 和原创程序化方块素材。营地8词继承原英语进度，学习奖励继续采用旧规则；游戏材料、配方、小屋和徽章使用独立存档。
+
+默认 `WORLD_ACCESS=admin`，仅管理员内测；验收后设为 `full` 向完整英语课程用户开放，设为 `off` 关闭。免费体验和中文主课程账号不开放，且不受 `ACCESS_CONTROL_ENFORCED` 的宽松开关影响。无需口语测评资格，不录音、不调用 SOE。
+
+`npm run build:world` 构建营地前端；`npm start`/`npm run dev` 会自动构建。直接通过 PM2 启动 `server.js` 时，需要先手动构建。隔离本地试玩可运行 `node scripts/preview-world.js`，只监听 `127.0.0.1:3137`，使用 `work/world-preview/` 的独立数据库。
+
+玩法、API、发布与验收清单见 [营地发布说明](deploy/WORLD_CAMP.md)。
+
 ## 腾讯云部署简要步骤
 
 ```bash
@@ -51,6 +62,7 @@ sudo mkdir -p /opt/minecraft-english-reader
 cd /opt/minecraft-english-reader
 git clone https://github.com/guoguo2827/Minecraft-English-Reader.git .
 npm install --omit=dev
+npm run build:world
 cp .env.example .env
 nano .env
 npm install -g pm2

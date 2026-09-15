@@ -120,6 +120,8 @@
       cursor: pointer;
     }
 
+    #worldLink[hidden] { display: none !important; }
+
     main {
       display: grid;
       grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
@@ -539,10 +541,15 @@
     }
 
     .theme-complete-actions {
-      display: flex;
-      justify-content: flex-end;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
       margin-top: 18px;
+    }
+
+    .theme-complete-actions .big-action {
+      min-width: 0;
+      white-space: normal;
     }
 
     .reward-toast {
@@ -1259,6 +1266,10 @@
     }
 
     @media (max-width: 760px) and (orientation: portrait) {
+      .theme-complete-actions {
+        grid-template-columns: 1fr;
+      }
+
       .rotate-tip {
         position: fixed;
         inset: 0;
@@ -1304,6 +1315,7 @@
         <span class="trial-pill" id="trialStatus"></span>
         <a class="top-link" href="/friends">好友</a>
         <a class="top-link" href="/speaking">口语测评</a>
+        <a class="top-link" href="/world" id="worldLink" hidden>英语营地</a>
         <a class="top-link" href="/progress">我的进度</a>
         <button class="top-link button" id="logoutBtn" type="button">退出</button>
         <button class="status-pill" id="voiceStatus" type="button">开启语音</button>
@@ -1422,8 +1434,9 @@
       </div>
       <p class="theme-complete-copy" id="themeCompleteCopy"></p>
       <div class="theme-complete-actions">
-        <button class="big-action secondary" id="stayThemeBtn" type="button">留在本主题</button>
+        <button class="big-action" id="practiceThemeBtn" type="button">再练一轮</button>
         <button class="big-action" id="nextThemeBtn" type="button">进入下一主题</button>
+        <button class="big-action secondary" id="stayThemeBtn" type="button">返回点读</button>
       </div>
     </section>
   </div>
@@ -2004,6 +2017,8 @@
     let currentThemeIndex = 0;
     let currentItem = themes[0].items[0];
     let quizItem = null;
+    let quizSessionMode = "standard";
+    let practiceRoundId = null;
     let selectedVoice = null;
     let activeUtterance = null;
     let voiceUnlocked = false;
@@ -2029,6 +2044,7 @@
     let autoAdvanceResolve = null;
     let autoSpeakTimer = null;
     let pendingAutoQuiz = null;
+    let quizNeedsReload = false;
     const gemThemes = {
       coal: { main: "#3f4548", dark: "#171a1c", light: "#9ca5a8", glow: "rgba(190,205,210,.55)" },
       iron: { main: "#c9d0d2", dark: "#6f777b", light: "#f6fbff", glow: "rgba(230,242,247,.62)" },
@@ -2059,8 +2075,10 @@
       rewardRulesBtn: document.querySelector("#rewardRulesBtn"),
       rewardRulesModal: document.querySelector("#rewardRulesModal"),
       themeCompleteModal: document.querySelector("#themeCompleteModal"),
+      themeCompleteTitle: document.querySelector("#themeCompleteTitle"),
       themeCompleteCopy: document.querySelector("#themeCompleteCopy"),
       stayThemeBtn: document.querySelector("#stayThemeBtn"),
+      practiceThemeBtn: document.querySelector("#practiceThemeBtn"),
       nextThemeBtn: document.querySelector("#nextThemeBtn"),
       quizBtn: document.querySelector("#quizBtn"),
       quizWord: document.querySelector("#quizWord"),
@@ -2094,6 +2112,7 @@
       try {
         const data = await api("/api/me");
         currentUserAccess = data?.user || null;
+        document.getElementById("worldLink").hidden = !currentUserAccess?.worldAvailable;
         document.body.dataset.role = currentUserAccess?.role || "user";
         if (currentUserAccess?.accessState === "free_trial" && currentUserAccess.trialExpiresAt) {
           const days = Math.max(0, Math.ceil((new Date(currentUserAccess.trialExpiresAt) - Date.now()) / 86400000));
@@ -2129,16 +2148,24 @@
     function setStudyMode(mode) {
       const previousMode = studyMode;
       studyMode = mode === "quiz" ? "quiz" : "learn";
-      if (studyMode !== "quiz") cancelQuizTransition();
+      if (studyMode !== "quiz") {
+        if (["answering", "success-feedback", "loading-next", "complete"].includes(quizFlowState)) quizNeedsReload = true;
+        cancelQuizTransition();
+      }
       document.body.dataset.studyMode = studyMode;
       if (studyMode === "quiz" && quizFlowState === "complete" && els.themeCompleteCopy.textContent) {
         els.themeCompleteModal.hidden = false;
+      }
+      const shouldReloadQuiz = studyMode === "quiz" && previousMode !== "quiz" && quizNeedsReload;
+      if (shouldReloadQuiz) {
+        quizNeedsReload = false;
+        newQuiz({ autoSpeak: true });
       }
       requestAnimationFrame(() => {
         const target = studyMode === "quiz" ? els.quiz : els.cards;
         setTimeout(() => {
           target?.scrollIntoView({ behavior: "smooth", block: "start" });
-          if (studyMode === "quiz" && previousMode !== "quiz" && quizItem) speak(quizItem.word);
+          if (studyMode === "quiz" && previousMode !== "quiz" && quizItem && !shouldReloadQuiz) speak(quizItem.word);
         }, 30);
       });
     }
@@ -2571,9 +2598,10 @@
 
     async function fetchQuizData(theme) {
       try {
-        const data = await api("/api/quiz/next", {
+        const practice = quizSessionMode === "practice" && practiceRoundId;
+        const data = await api(practice ? "/api/quiz/practice/next" : "/api/quiz/next", {
           method: "POST",
-          body: JSON.stringify({ themeId: theme.id })
+          body: JSON.stringify(practice ? { roundId: practiceRoundId } : { themeId: theme.id })
         });
         if (data?.completed) return data;
         if (!data?.word) throw new Error("题目数据不完整");
@@ -2585,6 +2613,7 @@
     }
 
     function correctFeedback(result) {
+      if (result.practice) return "答对了！继续巩固";
       if (result.localOnly) return "答对了！本地练习不计入绿宝石";
       const events = Array.isArray(result.rewardEvents) ? result.rewardEvents : [];
       const emeralds = events.reduce((sum, event) => sum + Math.max(0, Number(event.emeralds ?? event.exp ?? 0)), 0);
@@ -2605,17 +2634,32 @@
 
     function showThemeComplete(data, theme) {
       cancelQuizTransition();
+      quizNeedsReload = false;
       quizItem = null;
       quizFlowState = "complete";
       els.quizBtn.disabled = true;
-      els.quizWord.textContent = "主题完成";
       els.answers.innerHTML = "";
-      els.feedback.textContent = `${theme.title} 已全部答完！`;
-      handleRewardResponse(data);
+      const practiceSummary = data.practice ? data.round : null;
+      if (practiceSummary) {
+        quizSessionMode = "standard";
+        practiceRoundId = null;
+        els.themeCompleteTitle.textContent = "本轮巩固完成";
+        els.quizWord.textContent = "巩固完成";
+        els.feedback.textContent = `${theme.title} 本轮巩固完成！`;
+        els.themeCompleteCopy.textContent = `首次答对 ${practiceSummary.firstTryCorrect}/${practiceSummary.totalWords} 个，本轮正确率 ${practiceSummary.accuracy}%，需要巩固 ${practiceSummary.weakWords} 个，共作答 ${practiceSummary.totalAttempts} 次。`;
+      } else {
+        els.themeCompleteTitle.textContent = "太棒了！";
+        els.quizWord.textContent = "主题完成";
+        els.feedback.textContent = `${theme.title} 已全部答完！`;
+        handleRewardResponse(data);
+      }
       const nextIndex = nextAvailableThemeIndex();
-      els.themeCompleteCopy.textContent = nextIndex >= 0
-        ? `“${theme.title}”中的单词已经全部完成。要进入“${themes[nextIndex].title}”继续学习吗？`
-        : `“${theme.title}”中的单词已经全部完成，当前已没有其他可进入的主题。`;
+      if (!practiceSummary) {
+        els.themeCompleteCopy.textContent = nextIndex >= 0
+          ? `“${theme.title}”中的单词已经全部完成。可以再练一轮，也可以进入“${themes[nextIndex].title}”继续学习。`
+          : `“${theme.title}”中的单词已经全部完成，可以再练一轮巩固记忆。`;
+      }
+      els.practiceThemeBtn.hidden = false;
       els.nextThemeBtn.hidden = nextIndex < 0;
       els.nextThemeBtn.dataset.themeIndex = String(nextIndex);
       if (studyMode === "quiz") els.themeCompleteModal.hidden = false;
@@ -2638,7 +2682,7 @@
         : makeQuizOptions(theme, questionItem);
       preloadTts(questionItem.word);
       els.quizWord.textContent = questionItem.word;
-      els.feedback.textContent = "";
+      els.feedback.textContent = data.practice ? "巩固练习：请选择正确中文" : "";
       els.answers.innerHTML = options.map((cn) => `
         <button class="answer" type="button" data-cn="${cn}">${cn}</button>
       `).join("");
@@ -2662,9 +2706,12 @@
             };
           } else {
             try {
-              result = await api("/api/quiz/answer", {
+              const practice = quizSessionMode === "practice" && practiceRoundId;
+              result = await api(practice ? "/api/quiz/practice/answer" : "/api/quiz/answer", {
                 method: "POST",
-                body: JSON.stringify({ themeId: theme.id, word: questionItem.word, selectedCn: button.dataset.cn })
+                body: JSON.stringify(practice
+                  ? { roundId: practiceRoundId, word: questionItem.word, selectedCn: button.dataset.cn }
+                  : { themeId: theme.id, word: questionItem.word, selectedCn: button.dataset.cn })
               });
             } catch (error) {
               if (transitionId !== quizTransitionId) return;
@@ -2672,7 +2719,9 @@
               quizFlowState = "ready";
               answerButtons.forEach((node) => { node.disabled = false; });
               els.quizBtn.disabled = false;
-              els.feedback.textContent = `${error.message || "答案提交失败"}，本题尚未计入绿宝石，请重试`;
+              els.feedback.textContent = quizSessionMode === "practice"
+                ? `${error.message || "答案提交失败"}，本题尚未提交，请重试`
+                : `${error.message || "答案提交失败"}，本题尚未计入绿宝石，请重试`;
               return;
             }
           }
@@ -2690,16 +2739,18 @@
             if (node.dataset.cn === result.correctCn) node.classList.add("correct");
           });
           if (!correct) button.classList.add("wrong");
-          handleRewardResponse(result, button);
+          if (!result.practice) handleRewardResponse(result, button);
           if (correct) {
             els.feedback.textContent = correctFeedback(result);
             scheduleAutoAdvance(theme);
           } else {
             quizFlowState = "ready";
             els.quizBtn.disabled = false;
-            els.feedback.textContent = result.localOnly
-              ? `正确答案：${result.correctCn}（本地练习不计入绿宝石）`
-              : `正确答案：${result.correctCn}`;
+            els.feedback.textContent = result.practice
+              ? `正确答案：${result.correctCn}，这个单词稍后会再次出现`
+              : result.localOnly
+                ? `正确答案：${result.correctCn}（本地练习不计入绿宝石）`
+                : `正确答案：${result.correctCn}`;
             speak(questionItem.word);
           }
         });
@@ -2715,6 +2766,7 @@
       const theme = themes[currentThemeIndex];
       const prefetchedQuestion = pendingAutoQuiz?.theme === theme ? pendingAutoQuiz.promise : null;
       const transitionId = cancelQuizTransition();
+      quizNeedsReload = false;
       quizFlowState = "loading-next";
       els.quizBtn.disabled = true;
       els.feedback.textContent = "正在加载下一题...";
@@ -2771,6 +2823,34 @@
       renderQuiz(next.data, theme, { autoSpeak: true, delayedSpeak: true, transitionId });
     }
 
+    async function startPracticeRound() {
+      const theme = themes[currentThemeIndex];
+      const transitionId = cancelQuizTransition();
+      els.practiceThemeBtn.disabled = true;
+      els.themeCompleteCopy.textContent = "正在准备巩固练习...";
+      try {
+        const data = await api("/api/quiz/practice/start", {
+          method: "POST",
+          body: JSON.stringify({ themeId: theme.id })
+        });
+        if (transitionId !== quizTransitionId || theme !== themes[currentThemeIndex]) return;
+        practiceRoundId = data.round?.id;
+        if (!practiceRoundId) throw new Error("巩固轮次数据不完整");
+        quizSessionMode = "practice";
+        els.themeCompleteModal.hidden = true;
+        setStudyMode("quiz");
+        await newQuiz({ autoSpeak: true });
+      } catch (error) {
+        if (transitionId !== quizTransitionId) return;
+        quizSessionMode = "standard";
+        practiceRoundId = null;
+        els.themeCompleteCopy.textContent = error.message || "暂时无法开始巩固练习，请稍后重试";
+        els.themeCompleteModal.hidden = false;
+      } finally {
+        els.practiceThemeBtn.disabled = false;
+      }
+    }
+
     function setTheme(index) {
       const theme = themes[index];
       if (themeIsLocked(theme)) {
@@ -2778,6 +2858,10 @@
         els.feedback.textContent = "该主题不在当前体验范围内";
         return;
       }
+      cancelQuizTransition();
+      quizSessionMode = "standard";
+      practiceRoundId = null;
+      quizNeedsReload = false;
       currentThemeIndex = index;
       currentItem = theme.items[0];
       if (els.poster) {
@@ -2830,6 +2914,7 @@
       els.themeCompleteModal.hidden = true;
       if (Number.isInteger(index) && index >= 0) setTheme(index);
     });
+    els.practiceThemeBtn?.addEventListener("click", startPracticeRound);
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !els.rewardRulesModal?.hidden) els.rewardRulesModal.hidden = true;
       if (event.key === "Escape" && !els.themeCompleteModal?.hidden) {
@@ -2840,7 +2925,13 @@
     window.speechSynthesis?.addEventListener?.("voiceschanged", pickVoice);
     window.addEventListener("resize", () => renderCards());
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden) cancelQuizTransition();
+      if (document.hidden) {
+        if (["answering", "success-feedback", "loading-next", "complete"].includes(quizFlowState)) quizNeedsReload = true;
+        cancelQuizTransition();
+      } else if (studyMode === "quiz" && quizNeedsReload) {
+        quizNeedsReload = false;
+        newQuiz({ autoSpeak: true });
+      }
     });
 
     async function boot() {
