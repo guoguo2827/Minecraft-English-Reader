@@ -4,6 +4,8 @@ node_modules/
 outputs/world-assets/
 work/world-preview/
 work/world-qa/
+work/ket-preview/
+work/ket-qa/
 data/
 backups/
 .env

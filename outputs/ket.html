@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7faf9">
+  <title>KET1500 · 我的单词花园</title>
+  <link rel="stylesheet" href="/ket.css?v=2">
+  <script src="/ket-icons.js" defer></script>
+  <script src="/ket.js?v=2" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-button mobile-sidebar-toggle" id="sidebarToggle" aria-controls="sidebar" aria-expanded="false" aria-label="打开学习侧栏" title="学习侧栏"><i data-lucide="panel-left"></i></button>
+    <a class="brand" href="/ket"><span class="brand-mark"><i data-lucide="sprout"></i></span><span>KET<span class="brand-number">1500</span><small>我的单词花园</small></span></a>
+    <div class="top-actions"><span id="voiceStatus" role="status">标准音已准备</span><a class="icon-button" href="/" title="返回英语点读" aria-label="返回英语点读"><i data-lucide="house"></i></a></div>
+  </header>
+  <button id="sidebarBackdrop" class="sidebar-backdrop" aria-label="关闭学习侧栏" tabindex="-1" hidden></button>
+  <div class="learning-layout">
+  <aside id="sidebar" class="learning-sidebar" aria-label="学习侧栏">
+    <div class="sidebar-heading"><strong>我的学习</strong><button class="icon-button mobile-sidebar-toggle" id="sidebarClose" aria-label="关闭学习侧栏" title="关闭"><i data-lucide="x"></i></button></div>
+    <nav class="sidebar-nav" aria-label="课程导航">
+      <button id="startBtn" data-view="study" class="active"><i data-lucide="play"></i><span>今日学习</span></button>
+      <button data-view="library"><i data-lucide="book-open"></i>单词词库</button>
+      <button data-view="progress"><i data-lucide="chart-no-axes-column-increasing"></i>学习进度</button>
+    </nav>
+    <section class="sidebar-progress" aria-label="学习概况"><div class="sidebar-section-heading"><h2>我的进度</h2><span id="sidebarMastered">0%</span></div><progress id="sidebarProgress" max="100" value="0" aria-label="掌握进度"></progress><div id="sidebarStats"></div><p id="taskDescription" class="muted">正在读取学习任务…</p></section>
+    <section class="sidebar-route" aria-label="学习路线"><div class="sidebar-section-heading"><h2>学习路线</h2><span id="sidebarUnitCount"></span></div><div id="sidebarUnits"></div></section>
+    <div class="daily-setting"><label for="dailyNew">每日新词</label><select id="dailyNew"><option value="5">5 个 · 慢慢来</option><option value="10">10 个 · 多一点</option><option value="15">15 个 · 加把劲</option></select></div>
+    <p id="courseCount" class="sidebar-course-count"></p>
+    <footer>参考 A2 Key 词汇范围整理<br>非剑桥官方课程<br><a href="https://github.com/twitter/twemoji" target="_blank" rel="noopener">插画：Twemoji</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></footer>
+  </aside>
+  <main id="main" tabindex="-1">
+    <div id="message" role="status" aria-live="polite" hidden></div>
+    <section id="libraryView" class="view" hidden>
+      <div class="page-heading"><div><p class="eyebrow">MY WORD COLLECTION</p><h1>单词小世界</h1><p class="muted">熟悉的词，也可以再见一面。</p></div></div>
+      <div class="filters"><label>主题<select id="unitFilter"></select></label><label>学习状态<select id="statusFilter"><option value="all">全部单词</option><option value="new">还未认识</option><option value="learning">学习中</option><option value="mastered">已掌握</option><option value="due">待复习</option><option value="strengthen">需巩固</option></select></label><label>搜索<input id="wordSearch" type="search" placeholder="英文或中文"></label></div>
+      <div id="libraryWords"></div>
+    </section>
+    <section id="progressView" class="view" hidden>
+      <div class="page-heading"><div><p class="eyebrow">SMALL STEPS, REAL GROWTH</p><h1>看得见的成长</h1><p class="muted">认识、记住、再见面。</p></div><button class="icon-button" id="refreshBtn" title="刷新进度" aria-label="刷新进度"><i data-lucide="refresh-cw"></i></button></div>
+      <div class="metrics" id="progressMetrics"></div>
+      <h2>我的星章</h2><div id="badges" class="badge-row"></div>
+      <h2>最近30天</h2><div id="calendar" class="calendar"></div><p class="muted">深色方格代表当天完成过正式练习</p>
+      <details class="parent-report"><summary>家长学习报告</summary><div id="parentReport"></div><p class="muted">掌握需要认读、听辨跨天验证。自由加练与补答单独记录，不计入首次正确率；课程掌握不代表考试能力认证。</p></details>
+    </section>
+    <section id="studyView" class="view" aria-label="单词练习">
+      <div class="study-top"><span class="study-mark"><i data-lucide="book-open"></i></span><div><span id="studyLabel">今日学习</span><small id="studyUnit"></small></div><span id="studyCount"></span></div>
+      <progress id="studyProgress" max="10" value="0"></progress>
+      <div id="studyContent"><p class="loading-task" role="status">正在准备你的学习任务…</p></div>
+      <p class="muted" id="studyVoiceStatus" role="status" hidden></p>
+    </section>
+  </main>
+  </div>
+  <dialog id="wordDialog"><div class="dialog-top"><span id="dialogUnit"></span><button class="icon-button" id="closeWordBtn" title="关闭" aria-label="关闭"><i data-lucide="x"></i></button></div><div id="wordDetail"></div></dialog>
+</body>
+</html>

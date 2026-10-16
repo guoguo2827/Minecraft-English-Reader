@@ -77,6 +77,14 @@
         </div>
         <div class="admin-summary-grid" id="courseSummary"></div>
         <div class="theme-operations" id="courseThemes"></div>
+        <section class="admin-subsection">
+          <div class="section-heading"><h3>KET1500 独立课程</h3><a href="/ket">打开学习页</a></div>
+          <div class="admin-summary-grid" id="ketSummary"></div>
+          <div class="toolbar"><label>手机号<input id="ketPhone" inputmode="numeric" maxlength="11"></label><button type="button" data-ket-search>查询KET进度</button></div>
+          <div class="list" id="ketUsers"></div>
+          <div class="pager"><button type="button" id="ketPrev" data-ket-page="-1">上一页</button><span id="ketPage"></span><button type="button" id="ketNext" data-ket-page="1">下一页</button></div>
+          <div id="ketDetail"></div>
+        </section>
         <section class="admin-subsection"><h3>课程学习排行</h3><p class="muted">用于了解学习情况，不在这里修改账号。</p><div class="list" id="courseUsers"></div></section>
         <section class="admin-subsection">
           <div class="section-heading"><div><p class="section-kicker">独立功能</p><h3>口语测评与套餐</h3></div><span class="shared-badge" id="speakingServiceStatus">正在读取</span></div>
@@ -211,7 +219,7 @@
       try {
         if (currentView === "overview") await loadDashboard();
         if (currentView === "users") await loadUsers(1);
-        if (currentView === "courses") await Promise.all([loadCourseSummary(), loadSpeakingSummary()]);
+        if (currentView === "courses") await Promise.all([loadCourseSummary(), loadSpeakingSummary(), loadKetSummary()]);
         if (currentView === "access") await Promise.all([loadWhitelist(), loadApplications(), loadAccessSummary()]);
         if (currentView === "social") await loadSocial();
         if (currentView === "security") await loadAuditLogs();
@@ -280,6 +288,19 @@
       $("#courseUsers").innerHTML = data.topUsers.map((user, index) => `<div class="row"><div><strong>${index + 1}. ${escapeHtml(user.socialName || user.phone)}</strong><div class="muted">${escapeHtml(user.phone || "-")} · 点读 ${user.readCount} · 答题 ${user.answerCount} · 掌握 ${user.masteredWords}</div></div><b>${user.answerCount ? Math.round(user.correctCount / user.answerCount * 100) : 0}%</b></div>`).join("") || "<p>该时间范围暂无学习用户</p>";
     }
 
+    let ketPage = 1;
+    async function loadKetSummary(page = ketPage) {
+      const data = await api(`/api/admin/ket-summary?${new URLSearchParams({page: String(page), phone: $("#ketPhone").value})}`);
+      ketPage = data.page;
+      $("#ketSummary").innerHTML = [["开放范围", {off:"维护中",admin:"管理员内测",full:"英语用户"}[data.enabled] || "维护中"], ["上线词数", data.published], ["累计学习用户", data.learners], ["正式首次作答", data.answers], ["首次正确率", data.answers ? `${Math.round(data.correct / data.answers * 100)}%` : "暂无"]].map(([k,v]) => metric(k,v)).join("");
+      $("#ketUsers").innerHTML = data.users.map(u => `<div class="row"><div><strong>${escapeHtml(u.phone || u.nickname)}</strong><div class="muted">已学 ${u.learned} · 掌握 ${u.mastered} · 首次正确率 ${u.accuracy === null ? "暂无" : `${u.accuracy}%`} · 今日复习 ${u.reviewCompletion === null ? "暂无" : `${u.reviewCompletion}%`} · 最近学习 ${formatDate(u.lastStudy)}</div></div><button data-ket-detail="${u.id}">KET明细</button></div>`).join("") || "暂无用户";
+      $("#ketPage").textContent = `第 ${ketPage} 页，共 ${data.total} 个用户`;
+      $("#ketPrev").disabled = ketPage <= 1; $("#ketNext").disabled = ketPage * 20 >= data.total;
+    }
+    async function loadKetDetail(id) {
+      const data = await api(`/api/admin/ket-users/${id}`);
+      $("#ketDetail").innerHTML = `<h3>KET近30天学习</h3><div class="recent-day-list">${data.report.recent.filter(d => d.answers || d.newWords).map(d => `<span>${d.date} · 新词 ${d.newWords} · 正式作答 ${d.answers} · 答对 ${d.correct}</span>`).join("") || "暂无学习记录"}</div><h3>单元明细</h3>${data.catalog.units.map(u => `<details><summary>${escapeHtml(u.title)} · 掌握 ${u.words.filter(w => w.status === "mastered").length}/10</summary>${u.words.map(w => `<div class="row"><strong>${escapeHtml(w.word)} · ${escapeHtml(w.meaning)}</strong><span>${{new:"未学",learning:"学习中",mastered:"已掌握",strengthen:"需巩固"}[w.status]}${w.due ? " · 待复习" : ""}</span></div>`).join("")}</details>`).join("")}`;
+    }
     async function loadSpeakingSummary() {
       const data = await api("/api/admin/speaking-summary");
       $("#speakingServiceStatus").textContent = data.enabled && data.configured ? "服务已开启" : "服务未开启";
@@ -307,6 +328,11 @@
     document.addEventListener("click", async (event) => {
       const view = event.target.closest("[data-admin-view]"); const jump = event.target.closest("[data-jump-view]"); const progress = event.target.closest("[data-progress-user]"); const close = event.target.closest("[data-close-detail]"); const closeReset = event.target.closest("[data-close-reset-password]"); const copyReset = event.target.closest("[data-copy-reset-password]");
       try {
+        if (event.target.closest("[data-ket-search]")) return await loadKetSummary(1);
+        const ketPager = event.target.closest("[data-ket-page]");
+        if (ketPager) return await loadKetSummary(ketPage + Number(ketPager.dataset.ketPage));
+        const ketDetail = event.target.closest("[data-ket-detail]");
+        if (ketDetail) return await loadKetDetail(ketDetail.dataset.ketDetail);
         if (view) return showView(view.dataset.adminView);
         if (jump) return showView(jump.dataset.jumpView);
         if (close) return closeUserDetail();

@@ -12,6 +12,8 @@ const createSqliteSessionStore = require("./lib/sqlite-session-store");
 const { createWindowCounter, rateLimitMiddleware } = require("./lib/rate-limit");
 const { migrateWorld, accessError: worldAccessError, createWorldService } = require("./lib/world-service");
 const createWorldRouter = require("./lib/world-router");
+const { migrateKet, createKetService } = require("./lib/ket-service");
+const createKetRouter = require("./lib/ket-router");
 
 const app = express();
 const rootDir = __dirname;
@@ -840,6 +842,7 @@ function initDb() {
   applyThemePracticeMigration();
   applySpeakingMigration();
   migrateWorld(db);
+  migrateKet(db);
 }
 
 function ensureAdmin() {
@@ -1181,7 +1184,7 @@ function requireAuth(req, res, next) {
 
 function requirePasswordReadyPage(req, res, next) {
   const user = currentUser(req);
-  const returnPath = ["/progress", "/chinese", "/chinese/progress", "/friends", "/access-status", "/speaking", "/world"].includes(req.path) ? req.path : "";
+  const returnPath = ["/progress", "/chinese", "/chinese/progress", "/friends", "/access-status", "/speaking", "/world", "/ket"].includes(req.path) ? req.path : "";
   const suffix = returnPath ? `?next=${encodeURIComponent(returnPath)}` : "";
   if (!user) return res.redirect(`/login${suffix}`);
   if (user.password_reset_required) return res.redirect(`/reset-password${suffix}`);
@@ -3051,6 +3054,23 @@ app.get("/reset-password", requirePageAuth, (req, res) => {
 });
 app.get("/progress", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "progress.html")));
 app.get("/speaking", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(publicDir, "speaking.html")));
+app.get("/ket", requirePasswordReadyPage, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  return res.sendFile(path.join(publicDir, "ket.html"));
+});
+app.get("/ket-icons.js", requirePasswordReadyPage, (req, res) => res.sendFile(path.join(__dirname, "node_modules/lucide/dist/umd/lucide.min.js")));
+const ketService = createKetService({ db });
+app.use("/api/ket", requireAuth, createKetRouter({ service: ketService, ensureTtsAudio, limitTtsUser, limitTtsIp, ttsGenerationCounter }));
+app.get("/api/admin/ket-summary", requireAdmin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(ketService.adminSummary(req.query));
+});
+app.get("/api/admin/ket-users/:id", requireAdmin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const user = db.prepare("SELECT * FROM users WHERE id=? AND role!='admin'").get(req.params.id);
+  if (!user) return res.status(404).json({ error: "用户不存在" });
+  return res.json({ report: ketService.report(user), catalog: ketService.catalog(user) });
+});
 app.get("/world", requirePasswordReadyPage, (req, res) => {
   res.set("Cache-Control", "no-store");
   return res.sendFile(path.join(publicDir, "world.html"));

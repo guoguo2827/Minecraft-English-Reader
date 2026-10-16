@@ -25,7 +25,8 @@
     "express": "^4.19.2",
     "express-session": "^1.18.1",
     "lucide": "1.42.0",
-    "three": "0.185.1"
+    "three": "0.185.1",
+    "ts-fsrs": "5.4.2"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1"

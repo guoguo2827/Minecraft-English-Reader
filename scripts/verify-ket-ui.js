@@ -1,0 +1,125 @@
+"use strict";
+const fs = require("node:fs");
+const path = require("node:path");
+const assert = require("node:assert/strict");
+const os = require("node:os");
+const { chromium } = require("@playwright/test");
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ket-ui-"));
+const out = path.resolve(__dirname, "../work/ket-qa");
+fs.mkdirSync(out, { recursive: true });
+Object.assign(process.env, { NODE_ENV: "test", DATABASE_PATH: path.join(dir, "app.db"), SESSION_DATABASE_PATH: path.join(dir, "session.db"),
+  COOKIE_SECURE: "false", SESSION_SECRET: "ket-ui-isolated-not-production", ADMIN_USERNAME: "ket-ui", ADMIN_PHONE: "13850000000", ADMIN_PASSWORD: "KetPreview123", KET_ACCESS: "full" });
+const { app, db, sessionStore } = require("../server");
+let server, browser;
+async function main() {
+  await new Promise(resolve => { server = app.listen(0, "127.0.0.1", resolve); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  browser = await chromium.launch({ headless: true, ...(process.platform === "win32" ? { channel: "msedge" } : {}) });
+  const context = await browser.newContext();
+  await context.request.post(`${base}/api/auth/login`, { data: { phone: "13850000000", password: "KetPreview123" } });
+  const page = await context.newPage(), errors = [];
+  async function openSidebar() {
+    if (await page.locator("#sidebarToggle").isVisible() && await page.locator("#sidebarToggle").getAttribute("aria-expanded") !== "true") await page.locator("#sidebarToggle").click();
+  }
+  async function selectView(name) { await openSidebar(); await page.locator(`.sidebar-nav [data-view="${name}"]`).click(); }
+  page.on("pageerror", e => errors.push(e.message));
+  await page.route("**/api/ket/audio/**", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "QA: audio unavailable" }) }));
+  for (const [width, height] of [[320,568],[360,800],[390,844],[430,932],[1024,768],[1440,900]]) {
+    await page.setViewportSize({ width, height }); await page.goto(`${base}/ket`);
+    await page.locator("#studyContent .learning-word,#studyContent .options").first().waitFor();
+    await page.locator("#sidebarUnits .route-unit").first().waitFor({state:"attached"});
+    assert.equal(await page.locator("#studyView").isVisible(), true, "default entry must open learning without a start click");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${width}: home overflow`);
+    await page.screenshot({ path: path.join(out, `home-${width}.png`), fullPage: true });
+    await openSidebar();
+    if (width <= 760) {
+      assert.equal(await page.locator("#main").evaluate(el=>el.inert),true);
+      await page.waitForFunction(() => Math.abs(document.querySelector("#sidebar").getBoundingClientRect().left) < 1);
+      await page.screenshot({path:path.join(out,`sidebar-${width}.png`)});
+      await page.keyboard.press("Escape");
+      assert.equal(await page.locator("#sidebarToggle").getAttribute("aria-expanded"),"false");
+    }
+    await selectView("library");
+    await page.locator(".word-tile").first().waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${width}: library overflow`);
+    await page.locator(".word-tile").first().click(); await page.locator("#wordDialog").waitFor();
+    await page.locator(".spelling summary").click();
+    await page.locator("[data-letter]").first().click();
+    assert.ok((await page.locator("#spellingAnswer").innerText()).length > 0);
+    await page.locator("#closeWordBtn").click();
+    await selectView("study");
+    await page.locator("#studyContent").locator(".option,.learning-word,.summary-screen").first().waitFor();
+    if (await page.locator("#exposureBtn").count()) await page.locator("#exposureBtn").click();
+    await page.locator(".option").first().waitFor();
+    assert.equal(await page.locator(".option").count(), 4);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${width}: study overflow`);
+    const bottom = await page.locator(".options").evaluate(el => el.getBoundingClientRect().bottom);
+    assert.ok(bottom <= height, `${width}: choices outside viewport ${bottom}/${height}`);
+    await page.screenshot({ path: path.join(out, `study-${width}.png`), fullPage: true });
+  }
+  await page.setViewportSize({width:390,height:844}); await page.goto(`${base}/ket`);
+  await page.locator(".option").first().waitFor();
+  const session = db.prepare("SELECT * FROM ket_sessions WHERE completed_at IS NULL").get();
+  const q = JSON.parse(session.queue_json)[session.cursor];
+  await page.locator(`[data-answer="${q.wordId}"]`).click();
+  await page.locator("#feedback").filter({hasText:"答对了"}).waitFor();
+  await page.locator("#nextBtn").click();
+  await page.waitForTimeout(1200);
+  assert.equal(db.prepare("SELECT cursor FROM ket_sessions WHERE id=?").get(session.id).cursor, session.cursor + 1, "manual next and timer must not double advance");
+  if (await page.locator("#exposureBtn").count()) await page.locator("#exposureBtn").click();
+  await page.locator("#revealBtn").click();
+  await page.waitForTimeout(1300);
+  assert.equal(await page.locator("#feedback").innerText().then(t=>t.includes("正确答案")), true);
+  assert.equal(db.prepare("SELECT cursor FROM ket_sessions WHERE id=?").get(session.id).cursor, session.cursor + 1, "wrong answer stays in place");
+  await page.reload();
+  await page.locator("#feedback").filter({hasText:"正确答案"}).waitFor();
+  await page.locator("#nextBtn").click();
+  if (await page.locator("#exposureBtn").count()) await page.locator("#exposureBtn").click();
+  await page.locator(".option").first().waitFor();
+  let row = db.prepare("SELECT * FROM ket_sessions WHERE id=?").get(session.id);
+  let question = JSON.parse(row.queue_json)[row.cursor];
+  const beforeFailure = db.prepare("SELECT count(*) AS n FROM ket_attempts").get().n;
+  await page.route("**/api/ket/answer", route => route.fulfill({status:503,contentType:"application/json",body:'{"error":"QA network failure"}'}));
+  await page.locator(`[data-answer="${question.wordId}"]`).click();
+  await page.locator("#message").filter({hasText:"尚未确认保存"}).waitFor();
+  assert.equal(db.prepare("SELECT count(*) AS n FROM ket_attempts").get().n, beforeFailure);
+  assert.equal(await page.locator("#nextBtn").isVisible(), false);
+  await page.unroute("**/api/ket/answer");
+  await page.route("**/api/ket/next", route => route.fulfill({status:503,contentType:"application/json",body:'{"error":"QA next failure"}'}));
+  await page.locator("#retryBtn").click();
+  await page.locator("#feedback").filter({hasText:"答对了"}).waitFor();
+  await page.locator("#message").filter({hasText:"下一题加载失败"}).waitFor();
+  assert.equal(db.prepare("SELECT count(*) AS n FROM ket_attempts").get().n, beforeFailure + 1);
+  await page.unroute("**/api/ket/next");
+  const nextResponse = page.waitForResponse(r => r.url().endsWith("/api/ket/next") && r.status() === 200);
+  await page.locator("#nextBtn").click();
+  const response = await nextResponse, nextAt = Date.now(), nextData = await response.json();
+  const speech = await page.waitForRequest(r => r.url().includes(`/audio/${nextData.question.wordId}?`));
+  assert.ok(speech && Date.now() - nextAt >= 1250, "new question speech should wait 1.5 seconds after rendering");
+  await selectView("progress"); await page.locator(".day").first().waitFor();
+  await page.screenshot({path:path.join(out,"progress-390.png"),fullPage:true});
+  await page.goto(`${base}/ket#home`);
+  await page.locator("#studyContent .learning-word,#studyContent .options").first().waitFor();
+  assert.equal(await page.locator("#studyView").isVisible(),true,"legacy #home must open study");
+  await openSidebar();
+  await page.locator('[data-unit="animals"]').click();
+  assert.equal(await page.locator("#unitFilter").inputValue(),"animals");
+  await page.locator('.word-tile[data-word="ket-cat"]').waitFor();
+  assert.equal(await page.locator("#sidebarToggle").getAttribute("aria-expanded"),"false");
+  await page.route("**/api/ket/sessions", route => route.fulfill({status:503,contentType:"application/json",body:'{"error":"QA startup unavailable"}'}));
+  await page.goto(`${base}/ket`);
+  await page.locator("#message").filter({hasText:"QA startup unavailable"}).waitFor();
+  await page.unroute("**/api/ket/sessions");
+  await page.locator("#retryBtn").click();
+  await page.locator("#studyContent .learning-word,#studyContent .options").first().waitFor();
+  await page.route("**/api/ket/sessions", route => route.fulfill({status:200,contentType:"application/json",body:'{"completed":true,"empty":true,"message":"今天的任务完成了，也可以到词库自由练习。"}'}));
+  await page.goto(`${base}/ket`);
+  await page.locator(".summary-screen").filter({hasText:"今天的任务完成了"}).waitFor();
+  await page.unroute("**/api/ket/sessions");
+  await page.goto(`${base}/admin#courses`); await page.locator("#ketSummary").filter({hasText:"上线词数"}).waitFor();
+  assert.deepEqual(errors, []);
+  console.log("KET UI: study-first entry, sidebar/drawer, 6 viewport sizes, spelling, answer/next race, error recovery, speech delay, progress and admin passed.");
+}
+main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
+  await browser?.close(); if (server) await new Promise(resolve => server.close(resolve)); sessionStore.close(); db.close(); fs.rmSync(dir,{recursive:true,force:true});
+});
