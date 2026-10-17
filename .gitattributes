@@ -1,0 +1,4 @@
+# Preserve generated content hashes across Windows and Linux checkouts.
+content/** text eol=lf
+docs/ket1500/** text eol=lf
+outputs/ket-assets/expanded/** text eol=lf

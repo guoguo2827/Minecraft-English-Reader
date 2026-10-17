@@ -116,6 +116,37 @@ async function main() {
   await page.goto(`${base}/ket`);
   await page.locator(".summary-screen").filter({hasText:"今天的任务完成了"}).waitFor();
   await page.unroute("**/api/ket/sessions");
+  for (const [width, height] of [[320,568],[390,844],[1440,900]]) {
+    await page.setViewportSize({width,height});
+    await page.goto(`${base}/ket#library`);
+    await page.locator('#unitFilter option[value="ket-u150"]').waitFor({state:"attached"});
+    await page.locator("#unitFilter").selectOption("ket-u150");
+    assert.equal(await page.locator(".word-tile").count(),10);
+    await page.locator(".word-tile").first().click();
+    await page.locator("#wordDialog .context-picture").waitFor();
+    await page.locator("#wordDialog .context-picture").evaluate(img=>img.decode());
+    const size = await page.locator("#wordDialog .context-picture").evaluate(img=>({width:img.naturalWidth,height:img.naturalHeight}));
+    assert.deepEqual(size,{width:640,height:360});
+    assert.ok(await page.locator("#wordDialog .context-picture").evaluate(img=>img.getBoundingClientRect().width)>200);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    await page.screenshot({path:path.join(out,`expanded-${width}.png`)});
+    await page.locator("#closeWordBtn").click();
+  }
+  // Finish only this isolated QA database's old session before starting the new unit.
+  const { createKetService } = require("../lib/ket-service");
+  const service = createKetService({db}), qaUser = db.prepare("SELECT * FROM users WHERE phone=?").get("13850000000");
+  let active = service.start(qaUser);
+  for (let i=0;!active.completed && i<80;i++) {
+    if(active.question.needsExposure) service.expose(qaUser,active.question.wordId);
+    if(!active.answer) service.answer(qaUser,{sessionId:active.id,questionId:active.question.id,selected:active.question.wordId});
+    active=service.next(qaUser,{sessionId:active.id,questionId:active.question.id});
+  }
+  assert.equal(active.completed,true);
+  await page.locator('[data-practice="ket-u150"]').click();
+  await page.locator(".option").first().waitFor();
+  assert.equal(await page.locator(".option").count(),4);
+  assert.equal(await page.locator(".option img").count(),0);
+  await page.screenshot({path:path.join(out,"expanded-quiz.png")});
   await page.goto(`${base}/admin#courses`); await page.locator("#ketSummary").filter({hasText:"上线词数"}).waitFor();
   assert.deepEqual(errors, []);
   console.log("KET UI: study-first entry, sidebar/drawer, 6 viewport sizes, spelling, answer/next race, error recovery, speech delay, progress and admin passed.");

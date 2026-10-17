@@ -7,6 +7,7 @@ const path = require("node:path");
 const bcrypt = require("bcryptjs");
 const { createKetService, migrateKet, accessError, dayKey } = require("../lib/ket-service");
 const C = require("../lib/ket-content");
+const curriculum = require("../lib/ket-curriculum");
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ket-tests-"));
 Object.assign(process.env, { NODE_ENV: "test", DATABASE_PATH: path.join(dir, "app.db"), SESSION_DATABASE_PATH: path.join(dir, "sessions.db"),
   COOKIE_SECURE: "false", SESSION_SECRET: "ket-test-only-secret", ACCESS_CONTROL_ENFORCED: "true", KET_ACCESS: "full",
@@ -59,6 +60,39 @@ test("migration is additive, repeatable and preserves business rows", () => {
   const sizes = () => tables.map(t => db.prepare(`SELECT count(*) AS n FROM ${t}`).get().n);
   const before = sizes(); migrateKet(db); migrateKet(db); assert.deepEqual(sizes(), before);
   assert.equal(db.prepare("SELECT count(*) AS n FROM schema_migrations WHERE version='2026-10-16-ket-pilot-v1'").get().n, 1);
+});
+
+test("full curriculum retains pilot IDs and grants existing English clients 1500 words", async () => {
+  assert.equal(curriculum.words.length, 1500);
+  assert.equal(curriculum.units.length, 150);
+  assert.deepEqual(curriculum.words.slice(0, 100), C.words);
+  const u = user(), cookie = await login(u);
+  const response = await api(cookie, "/api/ket/catalog");
+  assert.equal(response.status, 200);
+  assert.equal(response.data.published, 1500);
+  assert.equal(response.data.units.filter(unit => !unit.locked).length, 150);
+  assert.equal(service.report(u).published, 1500);
+  const trial = { ...u, access_tier: "free_trial", trial_expires_at: "2099-01-01" };
+  assert.equal(service.catalog(trial).units.filter(unit => !unit.locked).length, 2);
+  assert.throws(() => service.start(trial, { mode: "free", unitId: "ket-u150" }), /完整英语/);
+});
+
+test("expanded unit practice omits captioned artwork from all quiz options and resumes normally", () => {
+  const u = user(), before = counts(u);
+  let s = service.start(u, { mode: "free", unitId: "ket-u150" });
+  const id = s.id;
+  for (let i = 0; i < 10; i++) {
+    assert.equal(s.completed, false);
+    assert.equal(s.question.options.length, 4);
+    assert.ok(s.question.options.every(option => option.image === null && option.meaning));
+    const result = service.answer(u, { sessionId: id, questionId: s.question.id, selected: s.question.wordId });
+    assert.ok(result.word.image.endsWith(".svg"));
+    assert.equal(result.word.picture.quizSafe, false);
+    assert.equal(service.session(u, id).answer.correct, true);
+    s = service.next(u, { sessionId: id, questionId: s.question.id });
+  }
+  assert.equal(s.completed, true);
+  assert.deepEqual(counts(u), before);
 });
 test("access checks do not inherit legacy permissive mode", () => {
   const u = user();

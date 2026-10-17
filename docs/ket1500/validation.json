@@ -1,0 +1,19 @@
+{
+  "version": "ket1500-content-draft-v2",
+  "total": 1500,
+  "units": 150,
+  "published": 100,
+  "draft": 1400,
+  "phrases": 65,
+  "uniqueIds": true,
+  "uniqueHeadwordsAndAliases": true,
+  "allUnitsHaveTenEntries": true,
+  "original100Unchanged": true,
+  "newEntriesHavePosAndChinese": true,
+  "officialListVerificationComplete": false,
+  "newExampleAndArtworkCoverage": 1400,
+  "teacherReviewComplete": false,
+  "newArtworkType": "captioned-context-collage",
+  "newArtworkQuizSafe": false,
+  "runtimeCatalogChanged": false
+}

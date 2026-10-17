@@ -71,7 +71,7 @@
     return `<button class="route-unit" data-unit="${unit.id}"><img src="${unit.words[0].image}" width="30" height="30" loading="lazy" alt=""><span><strong>${esc(unit.title)}</strong><small>${unit.locked ? "完整课程开放" : `${mastered} / 10 词已掌握`}</small></span>${unit.locked ? icon("lock-keyhole") : `<span class="route-number">${String(unit.number).padStart(2, "0")}</span>`}</button>`;
   }
   function renderSidebar() {
-    $("#courseCount").textContent = `课程目标 1500 词 · 试点已上线 ${catalog.published} 词`;
+    $("#courseCount").textContent = `KET1500 · 已上线 ${catalog.published} 词`;
     $("#taskDescription").textContent = `今日安排新词 ${report.newToday} / ${report.dailyNew} · ${report.dueWords} 个词待复习`;
     $("#startBtn span").textContent = report.activeSession ? "继续学习" : "今日学习";
     $("#dailyNew").value = report.dailyNew;
@@ -168,7 +168,7 @@
     finally { if (token === epoch) { pending = false; $("#startBtn").disabled = false; } }
   }
   function wordMarkup(w) {
-    return `<div class="learning-word"><img class="word-picture" src="${w.image}" alt="${esc(w.meaning)}" width="132" height="132"><h1>${esc(w.word)}</h1><p class="word-meaning"><small>${esc(w.pos)}</small> ${esc(w.meaning)}</p><button class="text-button" data-audio="${w.id}">${icon("volume-2")}听标准音</button><p class="word-example">${esc(w.example)}</p><p class="translation">${esc(w.translation)}</p><button class="text-button" data-audio="${w.id}" data-part="example">${icon("volume-2")}听例句</button></div>`;
+    return `<div class="learning-word"><img class="word-picture${w.picture?.type === "context-collage" ? " context-picture" : ""}" src="${w.image}" alt="${esc(w.meaning)}" width="132" height="132"><h1>${esc(w.word)}</h1><p class="word-meaning"><small>${esc(w.pos)}</small> ${esc(w.meaning)}</p><button class="text-button" data-audio="${w.id}">${icon("volume-2")}听标准音</button><p class="word-example">${esc(w.example)}</p><p class="translation">${esc(w.translation)}</p><button class="text-button" data-audio="${w.id}" data-part="example">${icon("volume-2")}听例句</button></div>`;
   }
   function renderStudy(autoSpeak = false) {
     clearTimeout(timer); clearTimeout(speechTimer);
@@ -188,7 +188,7 @@
       $("#studyContent").innerHTML = `${wordMarkup(q.exposure)}<div class="study-actions"><button class="primary" id="exposureBtn">认识了，试试看 ${icon("arrow-right")}</button></div>`;
       $("#exposureBtn").addEventListener("click", () => saveExposure(q.wordId));
     } else {
-      $("#studyContent").innerHTML = `${q.skill === "listen" ? `<div class="listen-prompt"><h2>听一听，是哪个词？</h2><button class="listen-button" data-audio="${q.wordId}" title="重播题目" aria-label="重播题目">${icon("volume-2")}</button></div>` : `<p class="muted" style="text-align:center">选出这个单词的意思</p><h1 class="question-word">${esc(q.word)}</h1><div class="study-actions"><button class="text-button" data-audio="${q.wordId}">${icon("volume-2")}读题</button></div>`}<div class="options">${q.options.map(o => `<button class="option" data-answer="${o.id}"><img src="${o.image}" alt="" width="48" height="48"><span>${esc(o.meaning)}</span></button>`).join("")}</div><div class="answer-feedback" id="feedback" aria-live="polite"></div><div class="study-actions"><button class="text-button" id="revealBtn">还没记住，看看答案</button><button class="primary" id="nextBtn" hidden>下一题 ${icon("arrow-right")}</button></div>`;
+      $("#studyContent").innerHTML = `${q.skill === "listen" ? `<div class="listen-prompt"><h2>听一听，是哪个词？</h2><button class="listen-button" data-audio="${q.wordId}" title="重播题目" aria-label="重播题目">${icon("volume-2")}</button></div>` : `<p class="muted" style="text-align:center">选出这个单词的意思</p><h1 class="question-word">${esc(q.word)}</h1><div class="study-actions"><button class="text-button" data-audio="${q.wordId}">${icon("volume-2")}读题</button></div>`}<div class="options">${q.options.map(o => `<button class="option" data-answer="${o.id}">${o.image ? `<img src="${o.image}" alt="" width="48" height="48">` : ""}<span>${esc(o.meaning)}</span></button>`).join("")}</div><div class="answer-feedback" id="feedback" aria-live="polite"></div><div class="study-actions"><button class="text-button" id="revealBtn">还没记住，看看答案</button><button class="primary" id="nextBtn" hidden>下一题 ${icon("arrow-right")}</button></div>`;
       $("#revealBtn").addEventListener("click", () => submit(null, true));
       $("#nextBtn").addEventListener("click", nextQuestion);
       if (session.answer) showAnswer(session.answer, false);

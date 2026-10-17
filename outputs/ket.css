@@ -68,3 +68,4 @@
   .learning-layout .learning-word .word-picture{width:84px;height:84px;padding:8px;margin:0 0 8px}
   .learning-layout .learning-word h1{font-size:27px}.learning-word .word-meaning{font-size:16px;margin-bottom:4px}.learning-word .word-example{margin:8px 0 4px;font-size:14px}.learning-word .translation{font-size:12px;margin-bottom:4px}
 }
+.learning-word .word-picture.context-picture,.learning-layout .learning-word .word-picture.context-picture{width:min(100%,360px);height:auto;aspect-ratio:16/9;padding:0}
