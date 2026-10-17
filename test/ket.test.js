@@ -94,6 +94,17 @@ test("expanded unit practice omits captioned artwork from all quiz options and r
   assert.equal(s.completed, true);
   assert.deepEqual(counts(u), before);
 });
+
+test("same-meaning words cannot produce indistinguishable answer choices", () => {
+  const u = user();
+  let s = service.start(u, { mode: "free", unitId: "ket-u111" });
+  while (!s.completed) {
+    assert.equal(s.question.options.length, 4);
+    assert.equal(new Set(s.question.options.map(option => option.meaning)).size, 4);
+    service.answer(u, { sessionId: s.id, questionId: s.question.id, selected: s.question.wordId });
+    s = service.next(u, { sessionId: s.id, questionId: s.question.id });
+  }
+});
 test("access checks do not inherit legacy permissive mode", () => {
   const u = user();
   assert.equal(accessError(u, "full", at), null);
